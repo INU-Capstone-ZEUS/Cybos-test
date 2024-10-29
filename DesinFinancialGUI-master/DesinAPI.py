@@ -331,6 +331,7 @@ class DesinAPI :
 
 
         # 요청하는 값에 비해, 한번에 받을 수 있는 개수는 6665개.
+        # 요청하는 값에 비해, 한번에 받을 수 있는 개수는 6665개.
         # 그러므로, 요청을 반복해야한다. + time.sleep을 걸어준다.
         # 요청값이 총 받은 개수보다 크면, ( 같아도 False) stop.
         # 참고 https://github.com/gyusu/Creon-Datareader/blob/master/creonAPI.py
@@ -414,23 +415,20 @@ class DesinAPI :
         instStockChart.SetInputValue(9, ord('1'))
         instStockChart.SetInputValue(10, ord('3'))
 
-        # 요청하는 값에 비해, 한번에 받을 수 있는 개수는 6665개.
-        # 그러므로, 요청을 반복해야한다. + time.sleep을 걸어준다.
-        # 요청값이 총 받은 개수보다 크면, ( 같아도 False) stop.
-        # 참고 https://github.com/gyusu/Creon-Datareader/blob/master/creonAPI.py
+
         rcv_count = 0
 
 
 
         duplicatedCount = 0
-
+        # 요청하는 값에 비해, 한번에 받을 수 있는 개수는 6665개.
+        # 그러므로, 요청을 반복해야한다. + time.sleep을 걸어준다.
+        # 요청값이 총 받은 개수보다 크면, ( 같아도 False) stop.
+        # 참고 https://github.com/gyusu/Creon-Datareader/blob/master/creonAPI.py
         while True :
-            # progressBar.setValue(rcv_count)
-            #
+
             instStockChart.BlockRequest()
-            # Time.sleep(0.25)
             self.numData = instStockChart.GetHeaderValue(3)
-            # self.numData = min(self.numData, count - rcv_count)
 
             print("받은 데이타 : ", self.numData)
 
@@ -446,9 +444,7 @@ class DesinAPI :
                     self.dict[columns[j]].append(instStockChart.GetDataValue(j, i))
             rcv_count += self.numData
 
-            # 2년치의 데이터가 넘어가면, 최신데이터도 가져오는데,
-            # 중복의 최신데이터는 필요없기 때문에,
-            # 만약 최신데이터가 나타나면 자르고, break한다.
+
 
             if self.numData == 0:
                 break
@@ -460,7 +456,9 @@ class DesinAPI :
         # self.df.to_csv(codeName + "미포함.csv", mode='a', index=False,
         #                encoding="euc-kr")
         # print(self.df)
-
+        # 2년치의 데이터가 넘어가면, 최신데이터도 가져오는데,
+        # 중복의 최신데이터는 필요없기 때문에,
+        # 만약 최신데이터가 나타나면 자르고, break한다.
         self._wait()
 
 

@@ -119,8 +119,7 @@ class AllDialog(QDialog,  form_class_2 ) :
                     print(code , "시작")
                     if self.mT == 'D':
                         print()
-                        self.conn.GetUpdatePeriod
-                        Day(code, lastDate, recentDate)
+                        self.conn.GetUpdatePeriodDay(code, lastDate, recentDate)
                         self.conn.df.to_csv(str(filePath) + "/" + code + ".csv", mode='a', index=False,
                                             encoding="euc-kr")
                     else:
@@ -159,8 +158,7 @@ class AllDialog(QDialog,  form_class_2 ) :
                         self.conn.GetUpdatePeriodMinutes(code, lastDate, recentDate,self.mT)
                         self.conn.df.to_csv(str(filePath) + "/" + code + ".csv", mode='a', index=False,
                                             encoding="euc-kr")
-                # buttonReplpy = QMessageBox.question(self,'안내', '하나로 합치시겠습니까? \n\nresult.csv 로 저장됩니다.', QMessageBox.Yes | QMessageBox.No,QMessageBox.No)
-                # if buttonReplpy == QMessageBox.Yes:
+
 
 
             except Exception  as ex:
