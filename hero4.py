@@ -1,20 +1,9 @@
 import pandas as pd
 from pykiwoom.kiwoom import Kiwoom
 from datetime import datetime, timedelta
+import login
 
-def login_to_kiwoom():
-    # 키움 API 인스턴스 생성
-    kiwoom = Kiwoom()
-    
-    # 로그인 시도
-    try:
-        kiwoom.CommConnect(block=True)  # 블록 방식으로 로그인 대기
-        print("로그인 성공!")
-    except Exception as e:
-        print("로그인 실패:", str(e))
-        return None
-    
-    return kiwoom  # 로그인 후 Kiwoom 인스턴스 반환
+ 
 
 def get_stock_code_by_name(kiwoom, stock_name):
     # 종목 코드와 종목 이름을 매핑할 딕셔너리
@@ -82,7 +71,7 @@ def save_minute_data_to_csv(df, stock_name):
 
 if __name__ == "__main__":
     # 키움증권 로그인
-    kiwoom_instance = login_to_kiwoom()
+    kiwoom_instance = login.login_and_keep_alive()
     if kiwoom_instance is not None:
         while True:
             # 사용자로부터 종목명 입력 받기

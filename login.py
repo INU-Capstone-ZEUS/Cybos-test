@@ -10,7 +10,6 @@ def login_and_keep_alive():
     while True:
         state = kiwoom.GetConnectState()
         if state == 0:
-            print("연결이 끊어졌습니다. 다시 로그인 시도 중...")
             kiwoom.CommConnect(block=True)
         
         # 예시로 현재 시간을 요청하여 세션 유지
@@ -20,6 +19,8 @@ def login_and_keep_alive():
         
         # 5분마다 서버와 통신
         time.sleep(300)
+
+        return kiwoom
 
 if __name__ == "__main__":
     login_and_keep_alive()
