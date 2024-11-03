@@ -1,96 +1,128 @@
-import pandas as pd
-from pykiwoom.kiwoom import Kiwoom
-from datetime import datetime, timedelta
-import login
+import sys
+from PyQt5.QtWidgets import *
+from PyQt5.QAxContainer import *
+from PyQt5.QtCore import *
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+from mplfinance.original_flavor import candlestick_ohlc
 
- 
+class KiwoomAPI(QAxWidget):
+    def __init__(self):
+        super().__init__()
+        self._create_kiwoom_instance()
+        self._set_signal_slots()
 
-def get_stock_code_by_name(kiwoom, stock_name):
-    # 종목 코드와 종목 이름을 매핑할 딕셔너리
-    stock_list = kiwoom.GetCodeListByMarket('0')  # 0은 코스피, 10은 코스닥
-    stock_info = {}
-    
-    for code in stock_list:
-        name = kiwoom.GetMasterCodeName(code)
-        stock_info[name] = code  # 종목명과 종목코드를 매핑
+    def _create_kiwoom_instance(self):
+        self.setControl("KHOPENAPI.KHOpenAPICtrl.1")
 
-    # 종목명으로 코드 검색
-    return stock_info.get(stock_name)
+    def _set_signal_slots(self):
+        self.OnEventConnect.connect(self._event_connect)
+        self.OnReceiveTrData.connect(self._receive_tr_data)
 
-def fetch_minute_data(kiwoom, stock_code, num_data=1000):
-    # 오늘부터 3일 전까지의 분봉 데이터 조회
-    today = datetime.now().strftime('%Y%m%d')  # 오늘 날짜
-    start_date = (datetime.now() - timedelta(days=3)).strftime('%Y%m%d')  # 3일 전 날짜
+    def comm_connect(self):
+        self.dynamicCall("CommConnect()")
+        self.login_event_loop = QEventLoop()
+        self.login_event_loop.exec_()
 
-    df_all = pd.DataFrame()
-    current_page = 0
+    def _event_connect(self, err_code):
+        if err_code == 0:
+            print("Connected")
+        else:
+            print("Disconnected")
+        self.login_event_loop.exit()
 
-    while True:
-        # 주가 데이터를 요청
-        data = kiwoom.block_request("opt10080", 
-                                     종목코드=stock_code, 
-                                     틱범위=1,  # 1분봉
-                                     시작일자=start_date,
-                                     종료일자=today,  # 종료일은 오늘
-                                     페이지=current_page,
-                                     output="분봉정보",
-                                     next=0)
-        
-        df = pd.DataFrame(data)
-        
-        # 열 이름 출력
-        print("현재 데이터의 열 이름:", df.columns.tolist())
-        
-        if df.empty:
-            break
-        
-        df_all = pd.concat([df_all, df], ignore_index=True)
+    def get_code_list_by_market(self, market):
+        code_list = self.dynamicCall("GetCodeListByMarket(QString)", market)
+        code_list = code_list.split(';')
+        return code_list[:-1]
 
-        # 1000개 데이터 가져오기
-        if len(df_all) >= num_data:
-            break
-        
-        current_page += 1  # 다음 페이지로 이동
+    def get_master_code_name(self, code):
+        code_name = self.dynamicCall("GetMasterCodeName(QString)", code)
+        return code_name
 
-    return df_all.head(num_data)  # 최대 num_data개만 반환
+    def set_input_value(self, id, value):
+        self.dynamicCall("SetInputValue(QString, QString)", id, value)
 
-def save_minute_data_to_csv(df, stock_name):
-    # 필요한 열만 선택
-    try:
-        df = df[["일자", "시간", "시가", "고가", "저가", "현재가", "거래량", "거래대금", 
-                  "누적체결매도수량", "누적체결매수수량"]]
-    except KeyError as e:
-        print(f"오류: 선택한 열이 존재하지 않습니다. {e}")
-        return
-    
-    # CSV 파일로 저장
-    file_name = f"{stock_name}_minute_data.csv"
-    df.to_csv(file_name, index=False, encoding='utf-8-sig')  # UTF-8 인코딩으로 저장
-    print(f"{file_name} 파일로 저장되었습니다.")
+    def comm_rq_data(self, rqname, trcode, next, screen_no):
+        self.dynamicCall("CommRqData(QString, QString, int, QString)", rqname, trcode, next, screen_no)
+        self.tr_event_loop = QEventLoop()
+        self.tr_event_loop.exec_()
 
+    def _comm_get_data(self, code, real_type, field_name, index, item_name):
+        ret = self.dynamicCall("CommGetData(QString, QString, QString, int, QString)", code,
+                               real_type, field_name, index, item_name)
+        return ret.strip()
+
+    def _get_repeat_cnt(self, trcode, rqname):
+        ret = self.dynamicCall("GetRepeatCnt(QString, QString)", trcode, rqname)
+        return ret
+
+    def _receive_tr_data(self, screen_no, rqname, trcode, record_name, next, unused1, unused2, unused3, unused4):
+        if next == '2':
+            self.remained_data = True
+        else:
+            self.remained_data = False
+
+        if rqname == "opt10081_req":
+            self._opt10081(rqname, trcode)
+
+        try:
+            self.tr_event_loop.exit()
+        except AttributeError:
+            pass
+
+    def _opt10081(self, rqname, trcode):
+        data_cnt = self._get_repeat_cnt(trcode, rqname)
+
+        for i in range(data_cnt):
+            date = self._comm_get_data(trcode, "", rqname, i, "일자")
+            open = self._comm_get_data(trcode, "", rqname, i, "시가")
+            high = self._comm_get_data(trcode, "", rqname, i, "고가")
+            low = self._comm_get_data(trcode, "", rqname, i, "저가")
+            close = self._comm_get_data(trcode, "", rqname, i, "현재가")
+            volume = self._comm_get_data(trcode, "", rqname, i, "거래량")
+
+            self.ohlcv['date'].append(date)
+            self.ohlcv['open'].append(int(open))
+            self.ohlcv['high'].append(int(high))
+            self.ohlcv['low'].append(int(low))
+            self.ohlcv['close'].append(int(close))
+            self.ohlcv['volume'].append(int(volume))
 
 if __name__ == "__main__":
-    # 키움증권 로그인
-    kiwoom_instance = login.login_and_keep_alive()
-    if kiwoom_instance is not None:
-        while True:
-            # 사용자로부터 종목명 입력 받기
-            stock_name = input("조회할 종목명을 입력하세요 (예: 삼성전자) 또는 '종료' 입력: ")
-            
-            if stock_name.lower() == '종료':  # '종료'를 입력하면 루프 종료
-                print("종료합니다.")
-                break
-            
-            # 종목명으로 종목 코드 검색
-            stock_code = get_stock_code_by_name(kiwoom_instance, stock_name)
-            
-            if stock_code:
-                # 오늘부터 3일 전까지의 분봉 데이터 조회
-                minute_data = fetch_minute_data(kiwoom_instance, stock_code, num_data=1000)
-                
-                if not minute_data.empty:
-                    save_minute_data_to_csv(minute_data, stock_name)  # CSV 파일로 저장
-                else:
-                    print("해당 종목의 분봉 데이터가 없습니다.")
-            else:
-                print("해당 종목명이 존재하지 않습니다.")
+    app = QApplication(sys.argv)
+    kiwoom = KiwoomAPI()
+    kiwoom.comm_connect()
+
+    kiwoom.ohlcv = {'date': [], 'open': [], 'high': [], 'low': [], 'close': [], 'volume': []}
+
+    # 삼성전자(005930) 종목의 일봉 데이터 요청
+    kiwoom.set_input_value("종목코드", "005930")
+    kiwoom.set_input_value("기준일자", "20230601")
+    kiwoom.set_input_value("수정주가구분", 1)
+    kiwoom.comm_rq_data("opt10081_req", "opt10081", 0, "0101")
+
+    # 데이터 변환
+    import pandas as pd
+    df = pd.DataFrame(kiwoom.ohlcv, columns=['date', 'open', 'high', 'low', 'close', 'volume'])
+    df['date'] = pd.to_datetime(df['date'])
+    df = df.set_index('date')
+
+    # 차트 그리기
+    fig, ax = plt.subplots(figsize=(12, 6))
+    candlestick_ohlc(ax, zip(mdates.date2num(df.index),
+                             df['open'], df['high'],
+                             df['low'], df['close']),
+                     width=0.6, colorup='r', colordown='b')
+
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+    ax.xaxis.set_major_locator(mdates.WeekdayLocator())
+    plt.xticks(rotation=45)
+    plt.title('삼성전자(005930) 주가 차트')
+    plt.xlabel('날짜')
+    plt.ylabel('가격')
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+    app.exec_()
