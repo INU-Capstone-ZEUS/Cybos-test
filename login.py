@@ -1,16 +1,17 @@
-# 32bit_kiwoom_server.py (32비트 환경에서 실행)
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from pykiwoom.kiwoom import *
 import pythoncom
+import os
 
 app = Flask(__name__)
 kiwoom = Kiwoom()
 
-@app.route('/login', methods=['POST'])
+@app.route('/login', methods=['GET', 'POST'])
 def login():
-    pythoncom.CoInitialize()  # COM 객체 초기화
-    
-    # 로그인 창 표시
+    if request.method == 'GET':
+        return jsonify({"message": "Please use POST method for login"}), 200
+
+    pythoncom.CoInitialize()
     kiwoom.CommConnect(block=True)
     
     if kiwoom.GetConnectState() == 1:
@@ -24,25 +25,10 @@ def login():
             "message": "Login failed"
         }
     
-    pythoncom.CoUninitialize()  # COM 객체 해제
-    
+    pythoncom.CoUninitialize()
     return jsonify(login_info)
 
-@app.route('/user_info')
-def user_info():
-    if kiwoom.GetConnectState() == 0:
-        return jsonify({"error": "Not connected"}), 400
-    
-    account_num = kiwoom.GetLoginInfo("ACCOUNT_CNT")
-    accounts = kiwoom.GetLoginInfo("ACCNO")
-    user_id = kiwoom.GetLoginInfo("USER_ID")
-    user_name = kiwoom.GetLoginInfo("USER_NAME")
-    return jsonify({
-        "account_num": account_num,
-        "accounts": accounts,
-        "user_id": user_id,
-        "user_name": user_name
-    })
-
 if __name__ == '__main__':
-    app.run(host='127.0.0.1', port=5000)
+    host = os.environ.get('FLASK_HOST', '0.0.0.0')
+    port = int(os.environ.get('FLASK_PORT', 5000))
+    app.run(host=host, port=port)
