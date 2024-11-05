@@ -10,8 +10,8 @@ import os
 import datetime
 
 
-form_class = uic.loadUiType("DesinGUI.ui")[0]
-form_class_2 = uic.loadUiType("AllDialog.ui")[0]
+form_class = uic.loadUiType("cybos/DesinGUI.ui")[0]
+form_class_2 = uic.loadUiType("cybos/AllDialog.ui")[0]
 
 mT = "m"
 class AllDialog(QDialog,  form_class_2 ) :
