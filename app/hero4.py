@@ -1,128 +1,141 @@
-# import sys
-# from PyQt5.QtWidgets import *
-# from PyQt5.QAxContainer import *
-# from PyQt5.QtCore import *
-# import matplotlib.pyplot as plt
-# import matplotlib.dates as mdates
-# from mplfinance.original_flavor import candlestick_ohlc
+import sys
+from PyQt5.QtWidgets import *
+from PyQt5.QAxContainer import *
+from PyQt5.QtCore import *
 
-# class KiwoomAPI(QAxWidget):
-#     def __init__(self):
-#         super().__init__()
-#         self._create_kiwoom_instance()
-#         self._set_signal_slots()
+class Kiwoom(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("실시간 조건검색 결과")
+        self.setGeometry(300, 300, 500, 600)
 
-#     def _create_kiwoom_instance(self):
-#         self.setControl("KHOPENAPI.KHOpenAPICtrl.1")
+        self.kiwoom = QAxWidget("KHOPENAPI.KHOpenAPICtrl.1")
+        self.kiwoom.OnEventConnect.connect(self._event_connect)
+        self.kiwoom.OnReceiveConditionVer.connect(self._receive_condition_ver)
+        self.kiwoom.OnReceiveTrCondition.connect(self._receive_tr_condition)
+        self.kiwoom.OnReceiveRealCondition.connect(self._receive_real_condition)
 
-#     def _set_signal_slots(self):
-#         self.OnEventConnect.connect(self._event_connect)
-#         self.OnReceiveTrData.connect(self._receive_tr_data)
+        self.login_event_loop = None
+        self.condition_event_loop = None
+        self.screen_no = "0101"  # 실시간 조건검색 화면 번호
 
-#     def comm_connect(self):
-#         self.dynamicCall("CommConnect()")
-#         self.login_event_loop = QEventLoop()
-#         self.login_event_loop.exec_()
+        self.init_ui()
 
-#     def _event_connect(self, err_code):
-#         if err_code == 0:
-#             print("Connected")
-#         else:
-#             print("Disconnected")
-#         self.login_event_loop.exit()
+    def init_ui(self):
+        self.condition_combo = QComboBox(self)
+        self.condition_combo.move(20, 20)
+        self.condition_combo.resize(200, 30)
 
-#     def get_code_list_by_market(self, market):
-#         code_list = self.dynamicCall("GetCodeListByMarket(QString)", market)
-#         code_list = code_list.split(';')
-#         return code_list[:-1]
+        self.condition_button = QPushButton("조건검색 실행", self)
+        self.condition_button.move(240, 20)
+        self.condition_button.clicked.connect(self.start_condition_search)
 
-#     def get_master_code_name(self, code):
-#         code_name = self.dynamicCall("GetMasterCodeName(QString)", code)
-#         return code_name
+        self.stock_table = QTableWidget(self)
+        self.stock_table.setColumnCount(3)
+        self.stock_table.setHorizontalHeaderLabels(["종목코드", "종목명", "상태"])
+        self.stock_table.setColumnWidth(0, 80)
+        self.stock_table.setColumnWidth(1, 160)
+        self.stock_table.setColumnWidth(2, 80)
+        self.stock_table.move(20, 70)
+        self.stock_table.resize(460, 500)
 
-#     def set_input_value(self, id, value):
-#         self.dynamicCall("SetInputValue(QString, QString)", id, value)
+    def comm_connect(self):
+        self.kiwoom.dynamicCall("CommConnect()")
+        self.login_event_loop = QEventLoop()
+        self.login_event_loop.exec_()
 
-#     def comm_rq_data(self, rqname, trcode, next, screen_no):
-#         self.dynamicCall("CommRqData(QString, QString, int, QString)", rqname, trcode, next, screen_no)
-#         self.tr_event_loop = QEventLoop()
-#         self.tr_event_loop.exec_()
+    def _event_connect(self, err_code):
+        if err_code == 0:
+            print("로그인 성공")
+            self.get_condition_load()
+        else:
+            print("로그인 실패")
+        self.login_event_loop.exit()
 
-#     def _comm_get_data(self, code, real_type, field_name, index, item_name):
-#         ret = self.dynamicCall("CommGetData(QString, QString, QString, int, QString)", code,
-#                                real_type, field_name, index, item_name)
-#         return ret.strip()
+    def get_condition_load(self):
+        ret = self.kiwoom.dynamicCall("GetConditionLoad()")
+        if ret == 1:
+            print("조건식 불러오기 요청 성공")
+            self.condition_event_loop = QEventLoop()
+            self.condition_event_loop.exec_()
+        else:
+            print("조건식 불러오기 요청 실패")
 
-#     def _get_repeat_cnt(self, trcode, rqname):
-#         ret = self.dynamicCall("GetRepeatCnt(QString, QString)", trcode, rqname)
-#         return ret
+    def _receive_condition_ver(self, ret, msg):
+        if ret == 1:
+            print("조건식 불러오기 성공")
+            condition_list = self.kiwoom.dynamicCall("GetConditionNameList()")
+            conditions = condition_list.split(';')[:-1]
+            for condition in conditions:
+                index, name = condition.split('^')
+                self.condition_combo.addItem(name, int(index))
+        else:
+            print(f"조건식 불러오기 실패: {msg}")
+        self.condition_event_loop.exit()
 
-#     def _receive_tr_data(self, screen_no, rqname, trcode, record_name, next, unused1, unused2, unused3, unused4):
-#         if next == '2':
-#             self.remained_data = True
-#         else:
-#             self.remained_data = False
+    def start_condition_search(self):
+        if self.condition_combo.currentIndex() >= 0:
+            condition_index = self.condition_combo.currentData()
+            condition_name = self.condition_combo.currentText()
+            ret = self.kiwoom.dynamicCall("SendCondition(QString, QString, int, int)",
+                                          self.screen_no, condition_name, condition_index, 0)
+            if ret == 1:
+                print(f"조건검색 '{condition_name}' 요청 성공")
+            else:
+                print(f"조건검색 '{condition_name}' 요청 실패")
 
-#         if rqname == "opt10081_req":
-#             self._opt10081(rqname, trcode)
+    def _receive_tr_condition(self, screen_no, codes, condition_name, condition_index, next):
+        print(f"조건검색 '{condition_name}' 결과:")
+        self.stock_table.setRowCount(0)
+        if codes:
+            code_list = codes.split(';')
+            for code in code_list:
+                name = self.kiwoom.dynamicCall("GetMasterCodeName(QString)", code)
+                row = self.stock_table.rowCount()
+                self.stock_table.insertRow(row)
+                self.stock_table.setItem(row, 0, QTableWidgetItem(code))
+                self.stock_table.setItem(row, 1, QTableWidgetItem(name))
+                self.stock_table.setItem(row, 2, QTableWidgetItem("편입"))
+                print(f"종목코드: {code}, 종목명: {name}")
+        else:
+            print("해당 조건을 만족하는 종목이 없습니다.")
+        self.update_txt_file()
 
-#         try:
-#             self.tr_event_loop.exit()
-#         except AttributeError:
-#             pass
+    def _receive_real_condition(self, code, event_type, condition_name, condition_index):
+        name = self.kiwoom.dynamicCall("GetMasterCodeName(QString)", code)
+        if event_type == "I":
+            print(f"편입: 종목코드: {code}, 종목명: {name}")
+            row = self.stock_table.rowCount()
+            self.stock_table.insertRow(row)
+            self.stock_table.setItem(row, 0, QTableWidgetItem(code))
+            self.stock_table.setItem(row, 1, QTableWidgetItem(name))
+            self.stock_table.setItem(row, 2, QTableWidgetItem("편입"))
+        elif event_type == "D":
+            print(f"이탈: 종목코드: {code}, 종목명: {name}")
+            for row in range(self.stock_table.rowCount()):
+                if self.stock_table.item(row, 0).text() == code:
+                    self.stock_table.setItem(row, 2, QTableWidgetItem("이탈"))
+                    break
+        self.update_txt_file()
 
-#     def _opt10081(self, rqname, trcode):
-#         data_cnt = self._get_repeat_cnt(trcode, rqname)
+    def update_txt_file(self):
+        try:
+            with open("condition_search_results.txt", 'w', encoding='utf-8') as file:
+                for row in range(self.stock_table.rowCount()):
+                    name = self.stock_table.item(row, 1).text()
+                    status = self.stock_table.item(row, 2).text()
+                    if status == "편입":
+                        file.write(f"{name}\n")
+            print("텍스트 파일 업데이트 완료")
+        except Exception as e:
+            print(f"텍스트 파일 업데이트 중 오류 발생: {str(e)}")
 
-#         for i in range(data_cnt):
-#             date = self._comm_get_data(trcode, "", rqname, i, "일자")
-#             open = self._comm_get_data(trcode, "", rqname, i, "시가")
-#             high = self._comm_get_data(trcode, "", rqname, i, "고가")
-#             low = self._comm_get_data(trcode, "", rqname, i, "저가")
-#             close = self._comm_get_data(trcode, "", rqname, i, "현재가")
-#             volume = self._comm_get_data(trcode, "", rqname, i, "거래량")
-
-#             self.ohlcv['date'].append(date)
-#             self.ohlcv['open'].append(int(open))
-#             self.ohlcv['high'].append(int(high))
-#             self.ohlcv['low'].append(int(low))
-#             self.ohlcv['close'].append(int(close))
-#             self.ohlcv['volume'].append(int(volume))
-
-# if __name__ == "__main__":
-#     app = QApplication(sys.argv)
-#     kiwoom = KiwoomAPI()
-#     kiwoom.comm_connect()
-
-#     kiwoom.ohlcv = {'date': [], 'open': [], 'high': [], 'low': [], 'close': [], 'volume': []}
-
-#     # 삼성전자(005930) 종목의 일봉 데이터 요청
-#     kiwoom.set_input_value("종목코드", "005930")
-#     kiwoom.set_input_value("기준일자", "20230601")
-#     kiwoom.set_input_value("수정주가구분", 1)
-#     kiwoom.comm_rq_data("opt10081_req", "opt10081", 0, "0101")
-
-#     # 데이터 변환
-#     import pandas as pd
-#     df = pd.DataFrame(kiwoom.ohlcv, columns=['date', 'open', 'high', 'low', 'close', 'volume'])
-#     df['date'] = pd.to_datetime(df['date'])
-#     df = df.set_index('date')
-
-#     # 차트 그리기
-#     fig, ax = plt.subplots(figsize=(12, 6))
-#     candlestick_ohlc(ax, zip(mdates.date2num(df.index),
-#                              df['open'], df['high'],
-#                              df['low'], df['close']),
-#                      width=0.6, colorup='r', colordown='b')
-
-#     ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
-#     ax.xaxis.set_major_locator(mdates.WeekdayLocator())
-#     plt.xticks(rotation=45)
-#     plt.title('삼성전자(005930) 주가 차트')
-#     plt.xlabel('날짜')
-#     plt.ylabel('가격')
-#     plt.grid(True)
-#     plt.tight_layout()
-#     plt.show()
-
-#     app.exec_()
+    def get_condition_search_results(self):
+        results = []
+        for row in range(self.stock_table.rowCount()):
+            name = self.stock_table.item(row, 1).text()  # 종목명은 두 번째 열(인덱스 1)에 있습니다.
+            status = self.stock_table.item(row, 2).text()
+            if status == "편입":
+                results.append(name)
+                print(f"조건검색 결과: 종목명 {name}")  # 디버깅용 출력
+        return results
