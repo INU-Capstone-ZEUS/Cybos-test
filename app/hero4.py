@@ -135,7 +135,7 @@ class Kiwoom(QMainWindow):
         for row in range(self.stock_table.rowCount()):
             name = self.stock_table.item(row, 1).text()  # 종목명은 두 번째 열(인덱스 1)에 있습니다.
             status = self.stock_table.item(row, 2).text()
-            if status == "편입":
+            if status == "편입" and name.strip():  # 종목명이 비어있지 않은 경우만 추가
                 results.append(name)
                 print(f"조건검색 결과: 종목명 {name}")  # 디버깅용 출력
         return results
