@@ -1,3 +1,4 @@
+import sys
 import win32com.client
 import pandas as pd
 from datetime import datetime
@@ -30,7 +31,7 @@ class CybosAPI:
         self.cybos.SetInputValue(1, ord('2'))  # 기간으로 요청
         self.cybos.SetInputValue(2, datetime.now().strftime("%Y%m%d"))  # 요청일자 (오늘)
         self.cybos.SetInputValue(3, datetime.now().strftime("%Y%m%d"))  # 시작일자
-        self.cybos.SetInputValue(4, 1000)  # 요청개수
+        self.cybos.SetInputValue(4, 30)  # 요청개수
         self.cybos.SetInputValue(5, [0, 1, 2, 3, 4, 5, 8])  # 요청항목 (날짜, 시간, 시가, 고가, 저가, 종가, 거래량)
         self.cybos.SetInputValue(6, ord('m'))  # 분봉
         self.cybos.SetInputValue(9, ord('1'))  # 수정주가 사용
