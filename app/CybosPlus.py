@@ -51,11 +51,11 @@ class CybosAPI:
             
             data.append([date, time, open_price, high_price, low_price, close_price, volume])
 
-        df = pd.DataFrame(data, columns=['날짜', '시간', '시가', '고가', '저가', '종가', '거래량'])
-        df['날짜'] = pd.to_datetime(df['날짜'].astype(str), format='%Y%m%d')
-        df['시간'] = pd.to_datetime(df['시간'].astype(str).str.zfill(6), format='%H%M%S').dt.time
+        df = pd.DataFrame(data, columns=['Date', 'time', 'Open', 'High', 'Low', 'Close', 'Amount'])
+        df['Date'] = pd.to_datetime(df['Date'].astype(str), format='%Y%m%d')
+        df['time'] = pd.to_datetime(df['time'].astype(str).str.zfill(6), format='%H%M%S').dt.time
         df['일자'] = df['날짜'].dt.strftime('%Y%m%d') + df['시간'].astype(str)
-        df = df[['일자', '시가', '고가', '저가', '종가', '거래량']]
+        df = df[['Date', 'Open', 'High', 'Low', 'Close', 'Amount']]
 
         df.to_csv(f"{stock_name}.csv", index=False)
         print(f"{stock_name}.csv 파일 생성 완료")
