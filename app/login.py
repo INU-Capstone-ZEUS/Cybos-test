@@ -5,12 +5,12 @@ from CybosPlus import CybosAPI
 import boto3
 from botocore.exceptions import NoCredentialsError
 
+
+
 def upload_to_s3(local_file, bucket, s3_file):
     s3 = boto3.client('s3',
-                    aws_access_key_id='access_key',
-                    aws_secret_access_key='secret_key')
-    s3_bucket_name = "dev-jeus-bucket"
-    stock_list_file = "condition_search_results.txt"
+                    aws_access_key_id=ACCESS_KEY,
+                    aws_secret_access_key=SECRET_KEY)
     try:
         s3.upload_file(local_file, bucket, s3_file)
         print(f"Upload Successful: {local_file} to {s3_file}")
@@ -26,12 +26,15 @@ def update_csv_files(kiwoom, cybos):
     stock_list = kiwoom.get_condition_search_results()
     cybos.update_csv_files(stock_list)
     
+    local_list_file = "condition_search_result.txt"
+    s3_list_file = "condition_search_result.txt"
+    upload_to_s3(local_list_file,'dev-jeus-bucket',s3_list_file)
     
     # S3에 업로드
     for stock_name in stock_list:
         local_file = f"{stock_name}.csv"
-        s3_file = f"stock_data/{stock_name}.csv"
-        upload_to_s3(local_file, 'YOUR_BUCKET_NAME', s3_file)
+        s3_file = f"{stock_name}.csv"
+        upload_to_s3(local_file, 'dev-jeus-bucket', s3_file)
 
 def main():
     app = QApplication(sys.argv)
