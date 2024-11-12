@@ -2,6 +2,7 @@ import win32com.client
 import pandas as pd
 from datetime import datetime
 import time
+import threading
 
 class CybosAPI:
     def __init__(self):
@@ -55,39 +56,37 @@ class CybosAPI:
             
             data.append([date, time, open_price, high_price, low_price, close_price, trading_value])
 
-        df = pd.DataFrame(data, columns=['날짜', '시간', '시가', '고가', '저가', '종가', '거래대금'])
+        df = pd.DataFrame(data, columns=['날짜', '시간', 'Open', 'High', 'Low', 'End', 'Amount'])
         df['날짜'] = pd.to_datetime(df['날짜'].astype(str), format='%Y%m%d')
         df['시간'] = pd.to_datetime(df['시간'].astype(str).str.zfill(6), format='%H%M%S').dt.time
-        df['date'] = df['날짜'].dt.strftime('%Y%m%d') + df['시간'].astype(str)
+        df['Date'] = df['날짜'].dt.strftime('%Y%m%d') + df['시간'].astype(str)
         df = df[['Date', 'Open', 'High', 'Low', 'End', 'Amount']]
+        #날짜 정렬
+        df = df.sort_values('Date', ascending=True)
 
         df.to_csv(f"{stock_name}.csv", index=False)
         print(f"{stock_name}.csv 파일 생성 완료")
 
-        # 실시간 데이터 수신 시작
-        self.start_realtime_data(stock_code, stock_name)
+        # 분마다 데이터 업데이트 시작
+        self.start_minute_update(stock_code, stock_name)
 
-    def start_realtime_data(self, stock_code, stock_name):
-        handler = RealtimeDataHandler(stock_code, stock_name)
-        handler.start()
+    def start_minute_update(self, stock_code, stock_name):
+        updater = MinuteDataUpdater(self, stock_code, stock_name)
+        updater.start()
 
     def update_csv_files(self, stock_list):
         for stock_name in stock_list:
             self.create_stock_csv(stock_name)
 
-class RealtimeDataHandler:
-    def __init__(self, stock_code, stock_name):
-        self.stock_code = stock_code
-        self.stock_name = stock_name
-        self.objStockCur = win32com.client.Dispatch("DsCbo1.StockCur")
+    def get_current_data(self, stock_code):
         self.objStockCur.SetInputValue(0, stock_code)
-
-    def start(self):
-        handler = win32com.client.WithEvents(self.objStockCur, self)
+    
+        # Subscribe 메서드를 사용하여 실시간 데이터 구독
         self.objStockCur.Subscribe()
-        print(f"{self.stock_name} 실시간 데이터 수신 시작")
 
-    def OnReceived(self):
+        # 잠시 대기하여 데이터를 받을 시간을 줍니다
+        time.sleep(1)
+
         current_time = datetime.now().strftime("%Y%m%d%H%M%S")
         current_price = self.objStockCur.GetHeaderValue(13)  # 현재가
         open_price = self.objStockCur.GetHeaderValue(4)  # 시가
@@ -95,13 +94,35 @@ class RealtimeDataHandler:
         low_price = self.objStockCur.GetHeaderValue(6)  # 저가
         volume = self.objStockCur.GetHeaderValue(9)  # 거래량
         trading_value = current_price * volume  # 거래대금 계산
+        # 구독 해제
+        self.objStockCur.Unsubscribe()
 
-        # CSV 파일에 실시간 데이터 추가
-        with open(f"{self.stock_name}.csv", "a") as f:
-            f.write(f"{current_time},{open_price},{high_price},{low_price},{current_price},{trading_value}\n")
+        return current_time, open_price, high_price, low_price, current_price, trading_value
 
-        print(f"{self.stock_name} 실시간 데이터 추가: {current_time}, 시가: {open_price}, 고가: {high_price}, 저가: {low_price}, 현재가: {current_price}, 거래대금: {trading_value}")
+class MinuteDataUpdater:
+    def __init__(self, cybos_api, stock_code, stock_name):
+        self.cybos_api = cybos_api
+        self.stock_code = stock_code
+        self.stock_name = stock_name
+        self.running = False
+
+    def start(self):
+        self.running = True
+        thread = threading.Thread(target=self.update_loop)
+        thread.start()
 
     def stop(self):
-        self.objStockCur.Unsubscribe()
-        print(f"{self.stock_name} 실시간 데이터 수신 중지")
+        self.running = False
+
+    def update_loop(self):
+        while self.running:
+            current_time, open_price, high_price, low_price, current_price, trading_value = self.cybos_api.get_current_data(self.stock_code)
+
+            # CSV 파일에 데이터 추가
+            with open(f"{self.stock_name}.csv", "a") as f:
+                f.write(f"{current_time},{open_price},{high_price},{low_price},{current_price},{trading_value}\n")
+
+            print(f"{self.stock_name} 데이터 추가: {current_time}, 시가: {open_price}, 고가: {high_price}, 저가: {low_price}, 현재가: {current_price}, 거래대금: {trading_value}")
+
+            # 1분 대기
+            time.sleep(60)
