@@ -1,6 +1,7 @@
 import win32com.client
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
+import os
 import time
 import threading
 import boto3
@@ -61,7 +62,7 @@ class CybosAPI:
 
         df = pd.DataFrame(data, columns=['날짜', '시간', 'Open', 'High', 'Low', 'End', 'Amount'])
         df['날짜'] = pd.to_datetime(df['날짜'].astype(str), format='%Y%m%d')
-        df['시간'] = pd.to_datetime(df['시간'].astype(str).str.zfill(6), format='%H%M%S').dt.time
+        df['시간'] = pd.to_datetime(df['시간'].astype(str).str.zfill(4), format='%H%M').dt.time
         df['Date'] = df['날짜'].dt.strftime('%Y%m%d') + df['시간'].astype(str)
         df = df[['Date', 'Open', 'High', 'Low', 'End', 'Amount']]
         #날짜 정렬
@@ -90,7 +91,7 @@ class CybosAPI:
         # 잠시 대기하여 데이터를 받을 시간을 줍니다
         time.sleep(1)
 
-        current_time = datetime.now().strftime("%Y%m%d%H%M%S")
+        current_time = datetime.now().strftime("%Y%m%d%H:%M")
         current_price = self.objStockCur.GetHeaderValue(13)  # 현재가
         open_price = self.objStockCur.GetHeaderValue(4)  # 시가
         high_price = self.objStockCur.GetHeaderValue(5)  # 고가
@@ -140,13 +141,15 @@ class MinuteDataUpdater:
             csv_file_name = f"{self.stock_name}.csv"
             with open(csv_file_name, "a") as f:
                 f.write(f"{current_time},{open_price},{high_price},{low_price},{current_price},{trading_value}\n")
-
-            print(f"{self.stock_name} 데이터 추가: {current_time}, 시가: {open_price}, 고가: {high_price}, 저가: {low_price}, 현재가: {current_price}, 거래대금: {trading_value}")
+                print(f"{self.stock_name} 데이터 추가: {current_time}, 시가: {open_price}, 고가: {high_price}, 저가: {low_price}, 현재가: {current_price}, 거래대금: {trading_value}")
 
             # S3에 업로드
             bucket_name = 'dev-jeus-bucket'  # S3 버킷 이름
             s3_file_name = f"{self.stock_name}.csv"  # S3에 저장될 파일 이름
             upload_to_s3(csv_file_name, bucket_name, s3_file_name)
 
-            # 1분 대기
-            time.sleep(60)
+            # 다음 분의 00초까지 대기
+            now = datetime.now()
+            next_minute = (now + timedelta(minutes=1)).replace(second=0, microsecond=0)
+            time_to_wait = (next_minute - now).total_seconds()
+            time.sleep(time_to_wait)

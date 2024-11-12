@@ -2,6 +2,8 @@ import sys
 from PyQt5.QtWidgets import *
 from PyQt5.QAxContainer import *
 from PyQt5.QtCore import *
+import time
+
 
 class Kiwoom(QMainWindow):
     def __init__(self):
@@ -21,7 +23,8 @@ class Kiwoom(QMainWindow):
 
         self.init_ui()
 
-        QTimer.singleShot(1000, self.auto_start_condition_search)
+
+
     def init_ui(self):
         self.condition_combo = QComboBox(self)
         self.condition_combo.move(20, 20)
@@ -49,11 +52,15 @@ class Kiwoom(QMainWindow):
             condition_index = self.condition_combo.currentData()
             condition_name = self.condition_combo.currentText()
             ret = self.kiwoom.dynamicCall("SendCondition(QString, QString, int, int)",
-                                          self.screen_no, condition_name, condition_index, 0)
+                                          self.screen_no, condition_name, condition_index, 1)  # 실시간 조건검색 활성화
             if ret == 1:
-                print(f"조건검색 '{condition_name}' 요청 성공")
+                print(f"실시간 조건검색 '{condition_name}' 요청 성공")
+                self.is_real_search_running = True
+                print("실시간 검색 시작")
             else:
-                print(f"조건검색 '{condition_name}' 요청 실패")
+                print(f"실시간 조건검색 '{condition_name}' 요청 실패")
+                self.is_real_search_running = False
+
 
     def comm_connect(self):
         self.kiwoom.dynamicCall("CommConnect()")
@@ -100,52 +107,65 @@ class Kiwoom(QMainWindow):
         if codes:
             code_list = codes.split(';')
             for code in code_list:
-                name = self.kiwoom.dynamicCall("GetMasterCodeName(QString)", code)
-                row = self.stock_table.rowCount()
-                self.stock_table.insertRow(row)
-                self.stock_table.setItem(row, 0, QTableWidgetItem(code))
-                self.stock_table.setItem(row, 1, QTableWidgetItem(name))
-                self.stock_table.setItem(row, 2, QTableWidgetItem("편입"))
-                print(f"종목코드: {code}, 종목명: {name}")
+                self._add_stock_to_table(code, "편입")
         else:
             print("해당 조건을 만족하는 종목이 없습니다.")
         self.update_txt_file()
 
     def _receive_real_condition(self, code, event_type, condition_name, condition_index):
-        name = self.kiwoom.dynamicCall("GetMasterCodeName(QString)", code)
         if event_type == "I":
+            name = self.kiwoom.dynamicCall("GetMasterCodeName(QString)", code)
             print(f"편입: 종목코드: {code}, 종목명: {name}")
-            row = self.stock_table.rowCount()
-            self.stock_table.insertRow(row)
-            self.stock_table.setItem(row, 0, QTableWidgetItem(code))
-            self.stock_table.setItem(row, 1, QTableWidgetItem(name))
-            self.stock_table.setItem(row, 2, QTableWidgetItem("편입"))
-        elif event_type == "D":
-            print(f"이탈: 종목코드: {code}, 종목명: {name}")
-            for row in range(self.stock_table.rowCount()):
-                if self.stock_table.item(row, 0).text() == code:
-                    self.stock_table.setItem(row, 2, QTableWidgetItem("이탈"))
-                    break
-        self.update_txt_file()
+            self._add_stock_to_table(code, "편입")
+            self.update_txt_file()
+
+    def _add_stock_to_table(self, code, status):
+        name = self.kiwoom.dynamicCall("GetMasterCodeName(QString)", code)
+        for row in range(self.stock_table.rowCount()):
+            if self.stock_table.item(row, 0).text() == code:
+                self.stock_table.setItem(row, 2, QTableWidgetItem(status))
+                print(f"업데이트: 종목코드: {code}, 종목명: {name}, 상태: {status}")
+                return
+        row = self.stock_table.rowCount()
+        self.stock_table.insertRow(row)
+        self.stock_table.setItem(row, 0, QTableWidgetItem(code))
+        self.stock_table.setItem(row, 1, QTableWidgetItem(name))
+        self.stock_table.setItem(row, 2, QTableWidgetItem(status))
+        print(f"추가: 종목코드: {code}, 종목명: {name}, 상태: {status}")
 
     def update_txt_file(self):
         try:
+            # 기존 파일의 내용을 읽어옵니다.
+            existing_stocks = set()
+            try:
+                with open("condition_search_results.txt", 'r', encoding='utf-8') as file:
+                    existing_stocks = set(line.strip() for line in file)
+            except FileNotFoundError:
+                pass  # 파일이 없으면 빈 set으로 시작합니다.
+
+        # 새로운 종목을 추가합니다.
+            new_stocks = set()
+            for row in range(self.stock_table.rowCount()):
+                name = self.stock_table.item(row, 1).text()
+                status = self.stock_table.item(row, 2).text()
+                if status == "편입" and name.strip():
+                    new_stocks.add(name)
+
+            # 중복을 제거하고 모든 종목을 합칩니다.
+            all_stocks = existing_stocks.union(new_stocks)
+
+            # 결과를 파일에 씁니다.
             with open("condition_search_results.txt", 'w', encoding='utf-8') as file:
-                for row in range(self.stock_table.rowCount()):
-                    name = self.stock_table.item(row, 1).text()
-                    status = self.stock_table.item(row, 2).text()
-                    if status == "편입":
-                        file.write(f"{name}\n")
+                for stock in sorted(all_stocks):  # 정렬된 순서로 저장
+                    file.write(f"{stock}\n")
+
             print("텍스트 파일 업데이트 완료")
         except Exception as e:
             print(f"텍스트 파일 업데이트 중 오류 발생: {str(e)}")
 
-    def get_condition_search_results(self):
-        results = []
-        for row in range(self.stock_table.rowCount()):
-            name = self.stock_table.item(row, 1).text()  # 종목명은 두 번째 열(인덱스 1)에 있습니다.
-            status = self.stock_table.item(row, 2).text()
-            if status == "편입" and name.strip():  # 종목명이 비어있지 않은 경우만 추가
-                results.append(name)
-                print(f"조건검색 결과: 종목명 {name}")  # 디버깅용 출력
-        return results
+    def read_existing_stocks(self):
+        try:
+            with open("condition_search_results.txt", 'r', encoding='utf-8') as file:
+                return set(line.strip() for line in file)
+        except FileNotFoundError:
+            return set()

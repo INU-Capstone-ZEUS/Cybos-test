@@ -10,7 +10,6 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
 
-
 def upload_to_s3(local_file, bucket, s3_file):
     s3 = boto3.client('s3',
         aws_access_key_id=ACCESS_KEY,
@@ -27,7 +26,15 @@ def upload_to_s3(local_file, bucket, s3_file):
         return False
 
 def update_csv_files(kiwoom, cybos):
-    stock_list = kiwoom.get_condition_search_results()
+    try:
+        with open("condition_search_results.txt", 'r', encoding='utf-8') as file:
+            stock_list = [line.strip() for line in file if line.strip()]
+    except FileNotFoundError:
+        print("condition_search_results.txt 파일을 찾을 수 없습니다.")
+        stock_list = []
+    except Exception as e:
+        print(f"파일 읽기 중 오류 발생: {str(e)}")
+        stock_list = []
     cybos.update_csv_files(stock_list)
     
     local_list_file = "condition_search_results.txt"
