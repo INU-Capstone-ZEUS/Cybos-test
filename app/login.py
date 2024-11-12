@@ -25,7 +25,7 @@ def upload_to_s3(local_file, bucket, s3_file):
         print("Credentials not available")
         return False
 
-def update_csv_files(kiwoom, cybos):
+def update_json_files(kiwoom, cybos):
     try:
         with open("condition_search_results.txt", 'r', encoding='utf-8') as file:
             stock_list = [line.strip() for line in file if line.strip()]
@@ -35,7 +35,7 @@ def update_csv_files(kiwoom, cybos):
     except Exception as e:
         print(f"파일 읽기 중 오류 발생: {str(e)}")
         stock_list = []
-    cybos.update_csv_files(stock_list)
+    cybos.update_json_files(stock_list)
     
     local_list_file = "condition_search_results.txt"
     s3_list_file = "condition_search_results.txt"
@@ -43,8 +43,8 @@ def update_csv_files(kiwoom, cybos):
 
     # S3에 업로드
     for stock_name in stock_list:
-        local_file = f"{stock_name}.csv"
-        s3_file = f"{stock_name}.csv"
+        local_file = f"{stock_name}.json"
+        s3_file = f"{stock_name}.json"
         upload_to_s3(local_file, 'dev-jeus-bucket', s3_file)
 
 class FileHandler(FileSystemEventHandler):
@@ -59,9 +59,9 @@ def initialize_files():
         f.write("")
     print("condition_search_result.txt 파일이 초기화되었습니다.")
 
-    # CSV 파일들 삭제
+    # json 파일들 삭제
     for file in os.listdir():
-        if file.endswith(".csv"):
+        if file.endswith(".json"):
             os.remove(file)
             print(f"{file} 파일이 삭제되었습니다.")
 
@@ -79,9 +79,9 @@ def main():
     # CybosPlus API 초기화
     cybos = CybosAPI()
 
-    # 조건검색 결과 업데이트 시 CSV 파일 생성/업데이트 및 S3 업로드
-    kiwoom.kiwoom.OnReceiveTrCondition.connect(lambda *args: update_csv_files(kiwoom, cybos))
-    kiwoom.kiwoom.OnReceiveRealCondition.connect(lambda *args: update_csv_files(kiwoom, cybos))
+    # 조건검색 결과 업데이트 시 json 파일 생성/업데이트 및 S3 업로드
+    kiwoom.kiwoom.OnReceiveTrCondition.connect(lambda *args: update_json_files(kiwoom, cybos))
+    kiwoom.kiwoom.OnReceiveRealCondition.connect(lambda *args: update_json_files(kiwoom, cybos))
 
     # 파일 변경 감지 설정
     event_handler = FileHandler()
