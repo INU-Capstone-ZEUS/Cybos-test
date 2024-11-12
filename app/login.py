@@ -10,6 +10,7 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
 
+
 def upload_to_s3(local_file, bucket, s3_file):
     s3 = boto3.client('s3',
         aws_access_key_id=ACCESS_KEY,
@@ -47,7 +48,7 @@ class FileHandler(FileSystemEventHandler):
 
 def initialize_files():
     # TXT 파일 초기화
-    with open("condition_search_result.txt", "w") as f:
+    with open("condition_search_results.txt", "w") as f:
         f.write("")
     print("condition_search_result.txt 파일이 초기화되었습니다.")
 
@@ -58,7 +59,7 @@ def initialize_files():
             print(f"{file} 파일이 삭제되었습니다.")
 
     # S3에 초기화된 파일 업로드
-    upload_to_s3("condition_search_result.txt", 'dev-jeus-bucket', "condition_search_result.txt")
+    upload_to_s3("condition_search_results.txt", 'dev-jeus-bucket', "condition_search_results.txt")
 
 def main():
     app = QApplication(sys.argv)

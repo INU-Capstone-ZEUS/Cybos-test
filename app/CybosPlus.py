@@ -3,6 +3,9 @@ import pandas as pd
 from datetime import datetime
 import time
 import threading
+import boto3
+from botocore.exceptions import NoCredentialsError
+
 
 class CybosAPI:
     def __init__(self):
@@ -35,7 +38,7 @@ class CybosAPI:
         self.cybos.SetInputValue(1, ord('2'))
         self.cybos.SetInputValue(2, datetime.now().strftime("%Y%m%d"))
         self.cybos.SetInputValue(3, datetime.now().strftime("%Y%m%d"))
-        self.cybos.SetInputValue(4, 1000)
+        self.cybos.SetInputValue(4, 30)
         self.cybos.SetInputValue(5, [0, 1, 2, 3, 4, 5, 8])
         self.cybos.SetInputValue(6, ord('m'))
         self.cybos.SetInputValue(9, ord('1'))
@@ -99,6 +102,21 @@ class CybosAPI:
 
         return current_time, open_price, high_price, low_price, current_price, trading_value
 
+def upload_to_s3(local_file, bucket, s3_file):
+    s3 = boto3.client('s3',
+        aws_access_key_id=ACCESS_KEY,
+        aws_secret_access_key=SECRET_KEY)
+    try:
+        s3.upload_file(local_file, bucket, s3_file)
+        print(f"Upload Successful: {local_file} to {s3_file}")
+        return True
+    except FileNotFoundError:
+        print(f"The file {local_file} was not found")
+        return False
+    except NoCredentialsError:
+        print("Credentials not available")
+        return False
+    
 class MinuteDataUpdater:
     def __init__(self, cybos_api, stock_code, stock_name):
         self.cybos_api = cybos_api
@@ -119,10 +137,16 @@ class MinuteDataUpdater:
             current_time, open_price, high_price, low_price, current_price, trading_value = self.cybos_api.get_current_data(self.stock_code)
 
             # CSV 파일에 데이터 추가
-            with open(f"{self.stock_name}.csv", "a") as f:
+            csv_file_name = f"{self.stock_name}.csv"
+            with open(csv_file_name, "a") as f:
                 f.write(f"{current_time},{open_price},{high_price},{low_price},{current_price},{trading_value}\n")
 
             print(f"{self.stock_name} 데이터 추가: {current_time}, 시가: {open_price}, 고가: {high_price}, 저가: {low_price}, 현재가: {current_price}, 거래대금: {trading_value}")
+
+            # S3에 업로드
+            bucket_name = 'dev-jeus-bucket'  # S3 버킷 이름
+            s3_file_name = f"{self.stock_name}.csv"  # S3에 저장될 파일 이름
+            upload_to_s3(csv_file_name, bucket_name, s3_file_name)
 
             # 1분 대기
             time.sleep(60)

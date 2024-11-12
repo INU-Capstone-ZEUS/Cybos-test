@@ -21,6 +21,7 @@ class Kiwoom(QMainWindow):
 
         self.init_ui()
 
+        QTimer.singleShot(1000, self.auto_start_condition_search)
     def init_ui(self):
         self.condition_combo = QComboBox(self)
         self.condition_combo.move(20, 20)
@@ -38,6 +39,21 @@ class Kiwoom(QMainWindow):
         self.stock_table.setColumnWidth(2, 80)
         self.stock_table.move(20, 70)
         self.stock_table.resize(460, 500)
+
+    def auto_start_condition_search(self):
+        if self.condition_combo.currentIndex() >= 0:
+            self.start_condition_search()
+
+    def start_condition_search(self):
+        if self.condition_combo.currentIndex() >= 0:
+            condition_index = self.condition_combo.currentData()
+            condition_name = self.condition_combo.currentText()
+            ret = self.kiwoom.dynamicCall("SendCondition(QString, QString, int, int)",
+                                          self.screen_no, condition_name, condition_index, 0)
+            if ret == 1:
+                print(f"조건검색 '{condition_name}' 요청 성공")
+            else:
+                print(f"조건검색 '{condition_name}' 요청 실패")
 
     def comm_connect(self):
         self.kiwoom.dynamicCall("CommConnect()")
@@ -69,20 +85,14 @@ class Kiwoom(QMainWindow):
             for condition in conditions:
                 index, name = condition.split('^')
                 self.condition_combo.addItem(name, int(index))
+            
+            # 조건식 로드 완료 후 자동으로 첫 번째 조건 선택 및 검색 시작
+            if self.condition_combo.count() > 0:
+                self.condition_combo.setCurrentIndex(0)
+                self.auto_start_condition_search()
         else:
             print(f"조건식 불러오기 실패: {msg}")
         self.condition_event_loop.exit()
-
-    def start_condition_search(self):
-        if self.condition_combo.currentIndex() >= 0:
-            condition_index = self.condition_combo.currentData()
-            condition_name = self.condition_combo.currentText()
-            ret = self.kiwoom.dynamicCall("SendCondition(QString, QString, int, int)",
-                                          self.screen_no, condition_name, condition_index, 0)
-            if ret == 1:
-                print(f"조건검색 '{condition_name}' 요청 성공")
-            else:
-                print(f"조건검색 '{condition_name}' 요청 실패")
 
     def _receive_tr_condition(self, screen_no, codes, condition_name, condition_index, next):
         print(f"조건검색 '{condition_name}' 결과:")
