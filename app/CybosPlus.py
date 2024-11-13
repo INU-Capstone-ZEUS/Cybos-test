@@ -189,7 +189,7 @@ class MinuteDataUpdater:
                 })
             data.sort(key=lambda x: x["Date"])
             # JSON 파일로 저장
-            json_file_name = f"{self.stock_name}.json"
+            json_file_name = f"{self.stock_name}_data.json"
             with open(json_file_name, "w") as f:
                 json.dump(data, f, indent=4)
 
@@ -197,7 +197,7 @@ class MinuteDataUpdater:
 
             # S3에 업로드
             bucket_name = 'dev-jeus-bucket'  # S3 버킷 이름
-            s3_file_name = f"{self.stock_name}.json"  # S3에 저장될 파일 이름
+            s3_file_name = f"{self.stock_name}_data.json"  # S3에 저장될 파일 이름
             upload_to_s3(json_file_name, bucket_name, s3_file_name)
 
             # 다음 분의 00초까지 대기
