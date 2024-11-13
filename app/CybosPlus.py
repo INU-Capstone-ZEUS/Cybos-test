@@ -69,7 +69,7 @@ class CybosAPI:
                 "Volume": volume,
                 "Amount": trading_value
             })
-
+        data.sort(key=lambda x: x["Date"])
         # JSON 파일로 저장
         with open(f"{stock_name}_data.json", "w") as f:
             json.dump(data, f, indent=4)
@@ -154,26 +154,46 @@ class MinuteDataUpdater:
 
     def update_loop(self):
         while self.running:
-            current_time, open_price, high_price, low_price, current_price, trading_value = self.cybos_api.get_current_data(self.stock_code)
+            # 최신 30개의 데이터를 가져옵니다
+            self.cybos_api.cybos.SetInputValue(0, self.stock_code)
+            self.cybos_api.cybos.SetInputValue(1, ord('2'))
+            self.cybos_api.cybos.SetInputValue(2, datetime.now().strftime("%Y%m%d"))
+            self.cybos_api.cybos.SetInputValue(3, datetime.now().strftime("%Y%m%d"))
+            self.cybos_api.cybos.SetInputValue(4, 30)
+            self.cybos_api.cybos.SetInputValue(5, [0, 1, 2, 3, 4, 5, 8])
+            self.cybos_api.cybos.SetInputValue(6, ord('m'))
+            self.cybos_api.cybos.SetInputValue(9, ord('1'))
+            self.cybos_api.cybos.BlockRequest()
 
-            # JSON 파일에 데이터 추가
-            json_file_name = f"{self.stock_name}.json"
-            
-            with open(json_file_name, "r+") as f:
-                data = json.load(f)
+            num_data = self.cybos_api.cybos.GetHeaderValue(3)
+            data = []
+
+            for i in range(num_data):
+                date = self.cybos_api.cybos.GetDataValue(0, i)
+                time = self.cybos_api.cybos.GetDataValue(1, i)
+                open_price = self.cybos_api.cybos.GetDataValue(2, i)
+                high_price = self.cybos_api.cybos.GetDataValue(3, i)
+                low_price = self.cybos_api.cybos.GetDataValue(4, i)
+                close_price = self.cybos_api.cybos.GetDataValue(5, i)
+                volume = self.cybos_api.cybos.GetDataValue(6, i)
+                trading_value = close_price * volume
+
                 data.append({
-                    "Date": current_time,
+                    "Date": f"{date}{time:04d}",
                     "Open": open_price,
                     "High": high_price,
                     "Low": low_price,
-                    "Close": current_price,
+                    "Close": close_price,
+                    "Volume": volume,
                     "Amount": trading_value
                 })
-                f.seek(0)
+            data.sort(key=lambda x: x["Date"])
+            # JSON 파일로 저장
+            json_file_name = f"{self.stock_name}.json"
+            with open(json_file_name, "w") as f:
                 json.dump(data, f, indent=4)
-                f.truncate()
 
-            print(f"{self.stock_name} 데이터 추가: {current_time}, 시가: {open_price}, 고가: {high_price}, 저가: {low_price}, 현재가: {current_price}, 거래대금: {trading_value}")
+            print(f"{self.stock_name} 데이터 업데이트 완료: {len(data)} 개의 데이터")
 
             # S3에 업로드
             bucket_name = 'dev-jeus-bucket'  # S3 버킷 이름
