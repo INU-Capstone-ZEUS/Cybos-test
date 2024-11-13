@@ -1,12 +1,14 @@
+import string
 import win32com.client
 import pandas as pd
 from datetime import datetime, timedelta
-import os
 import time
 import threading
 import boto3
 import json
 from botocore.exceptions import NoCredentialsError
+import os
+from dotenv import load_dotenv
 
 
 class CybosAPI:
@@ -79,6 +81,8 @@ class CybosAPI:
         # 분마다 데이터 업데이트 시작
         self.start_minute_update(stock_code, stock_name)
     
+    def remove_A(self,stock_code):
+        return string[1:]
     def get_stock_info(self, stock_name,id):
         stock_code = self.get_stock_code(stock_name)
         if stock_code is None:
@@ -87,6 +91,7 @@ class CybosAPI:
         self.objStockMst.SetInputValue(0, stock_code)
         self.objStockMst.BlockRequest()
         _id = id
+        stock_code = self.remove_A(stock_code)
         return {
             "_id":_id,
             "code": stock_code,
@@ -124,8 +129,8 @@ class CybosAPI:
 
 def upload_to_s3(local_file, bucket, s3_file):
     s3 = boto3.client('s3',
-                      aws_access_key_id=ACCESS_KEY,
-                      aws_secret_access_key=SECRET_KEY)
+        aws_access_key_id=os.getenv("ACCESS_KEY"),
+        aws_secret_access_key=os.getenv("SECRET_KEY"))
     try:
         s3.upload_file(local_file, bucket, s3_file)
         print(f"Upload Successful: {local_file} to {s3_file}")

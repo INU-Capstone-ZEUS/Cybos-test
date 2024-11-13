@@ -9,12 +9,15 @@ import os
 import time
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
+from dotenv import load_dotenv
+
+
 
 
 def upload_to_s3(local_file, bucket, s3_file):
     s3 = boto3.client('s3',
-        aws_access_key_id=ACCESS_KEY,
-        aws_secret_access_key=SECRET_KEY)
+        aws_access_key_id=os.getenv("ACCESS_KEY"),
+        aws_secret_access_key=os.getenv("SECRET_KEY"))
     try:
         s3.upload_file(local_file, bucket, s3_file)
         print(f"Upload Successful: {local_file} to {s3_file}")
