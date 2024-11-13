@@ -28,7 +28,8 @@ class CybosAPI:
             return None
         return code
 
-    def create_stock_json(self, stock_name):
+    def create_stock_data_json(self, stock_name):
+    
         stock_code = self.get_stock_code(stock_name)
         if stock_code is None:
             return
@@ -70,13 +71,31 @@ class CybosAPI:
             })
 
         # JSON 파일로 저장
-        with open(f"{stock_name}.json", "w") as f:
+        with open(f"{stock_name}_data.json", "w") as f:
             json.dump(data, f, indent=4)
 
-        print(f"{stock_name}.json 파일 생성 완료")
+        print(f"{stock_name}_data.json 파일 생성 완료")
 
         # 분마다 데이터 업데이트 시작
         self.start_minute_update(stock_code, stock_name)
+    
+    def get_stock_info(self, stock_name,id):
+        stock_code = self.get_stock_code(stock_name)
+        if stock_code is None:
+            return None
+
+        self.objStockMst.SetInputValue(0, stock_code)
+        self.objStockMst.BlockRequest()
+        _id = id
+        return {
+            "_id":_id,
+            "code": stock_code,
+            "name": self.objStockMst.GetHeaderValue(1),  # 종목명
+            "price": self.objStockMst.GetHeaderValue(13),  # 시가
+            "rate": self.objStockMst.GetHeaderValue(12),  # 등락률
+            "status" : "random"
+        }
+
 
     def start_minute_update(self, stock_code, stock_name):
         updater = MinuteDataUpdater(self, stock_code, stock_name)
@@ -84,7 +103,7 @@ class CybosAPI:
 
     def update_json_files(self, stock_list):
         for stock_name in stock_list:
-            self.create_stock_json(stock_name)
+            self.create_stock_data_json(stock_name)
 
     def get_current_data(self, stock_code):
         self.objStockCur.SetInputValue(0, stock_code)

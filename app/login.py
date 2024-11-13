@@ -1,3 +1,4 @@
+import json
 import sys
 from PyQt5.QtWidgets import QApplication
 from hero4 import Kiwoom
@@ -35,17 +36,29 @@ def update_json_files(kiwoom, cybos):
     except Exception as e:
         print(f"파일 읽기 중 오류 발생: {str(e)}")
         stock_list = []
+    
+    stock_list_data = []
+    for stock_name in stock_list:
+        stock_info = cybos.get_stock_info(stock_name,stock_list.index())
+        if stock_info:
+            stock_list_data.append(stock_info)
+
+    with open("stock_list.json", "w", encoding='utf-8') as f:
+        json.dump(stock_list_data, f, ensure_ascii=False, indent=4)
+        
+    print("stock_list.json 파일 생성 완료")
+
+    # S3에 업로드
+    upload_to_s3("stock_list.json", 'dev-jeus-bucket', "stock_list.json")
     cybos.update_json_files(stock_list)
     
-    local_list_file = "condition_search_results.txt"
-    s3_list_file = "condition_search_results.txt"
-    upload_to_s3(local_list_file, 'dev-jeus-bucket', s3_list_file)
 
     # S3에 업로드
     for stock_name in stock_list:
-        local_file = f"{stock_name}.json"
-        s3_file = f"{stock_name}.json"
+        local_file = f"{stock_name}_data.json"
+        s3_file = f"{stock_name}_data.json"
         upload_to_s3(local_file, 'dev-jeus-bucket', s3_file)
+
 
 class FileHandler(FileSystemEventHandler):
     def on_modified(self, event):
