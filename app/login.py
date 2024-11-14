@@ -13,11 +13,10 @@ from dotenv import load_dotenv
 
 
 
-
 def upload_to_s3(local_file, bucket, s3_file):
     s3 = boto3.client('s3',
-        aws_access_key_id=os.getenv("ACCESS_KEY"),
-        aws_secret_access_key=os.getenv("SECRET_KEY"))
+        aws_access_key_id=ACCESS_KEY,
+        aws_secret_access_key=SECRET_KEY)
     try:
         s3.upload_file(local_file, bucket, s3_file)
         print(f"Upload Successful: {local_file} to {s3_file}")
@@ -42,7 +41,7 @@ def update_json_files(kiwoom, cybos):
     
     stock_list_data = []
     for stock_name in stock_list:
-        stock_info = cybos.get_stock_info(stock_name,stock_list.index())
+        stock_info = cybos.get_stock_info(stock_name,stock_list.index(stock_name))
         if stock_info:
             stock_list_data.append(stock_info)
 

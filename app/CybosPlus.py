@@ -9,6 +9,7 @@ import json
 from botocore.exceptions import NoCredentialsError
 import os
 from dotenv import load_dotenv
+import requests
 
 
 class CybosAPI:
@@ -82,16 +83,17 @@ class CybosAPI:
         self.start_minute_update(stock_code, stock_name)
     
     def remove_A(self,stock_code):
-        return string[1:]
+        return stock_code[1:]
     def get_stock_info(self, stock_name,id):
         stock_code = self.get_stock_code(stock_name)
         if stock_code is None:
             return None
-
+        
         self.objStockMst.SetInputValue(0, stock_code)
         self.objStockMst.BlockRequest()
         _id = id
         stock_code = self.remove_A(stock_code)
+
         return {
             "_id":_id,
             "code": stock_code,
@@ -129,8 +131,8 @@ class CybosAPI:
 
 def upload_to_s3(local_file, bucket, s3_file):
     s3 = boto3.client('s3',
-        aws_access_key_id=os.getenv("ACCESS_KEY"),
-        aws_secret_access_key=os.getenv("SECRET_KEY"))
+        aws_access_key_id=ACCESS_KEY,
+        aws_secret_access_key=SECRET_KEY)
     try:
         s3.upload_file(local_file, bucket, s3_file)
         print(f"Upload Successful: {local_file} to {s3_file}")
@@ -204,9 +206,32 @@ class MinuteDataUpdater:
             bucket_name = 'dev-jeus-bucket'  # S3 버킷 이름
             s3_file_name = f"{self.stock_name}_data.json"  # S3에 저장될 파일 이름
             upload_to_s3(json_file_name, bucket_name, s3_file_name)
-
+            data_to_fastapi(json_file_name)
+            alert_list()
+            alert_chart()
             # 다음 분의 00초까지 대기
             now = datetime.now()
             next_minute = (now + timedelta(minutes=1)).replace(second=0, microsecond=0)
             time_to_wait = (next_minute - now).total_seconds()
             time.sleep(time_to_wait)
+
+base_url = "https://jeus.site:8080"
+
+def data_to_fastapi(json_file_name):
+    url = f"{base_url}/predict"
+    data = {"files": json_file_name}
+    headers = {"Content-Type": "application/json"}
+    response = requests.post(url, json=data, headers=headers)
+    if response.status_code == 200:
+        return response.json()
+
+def alert_list():
+    url = f"{base_url}/aler_list"
+    response = requests.get(url)
+    if response.status_code==200:
+        return response.json()
+def alert_chart():
+    url = f"{base_url}/alert_chart"
+    response = requests.get(url)
+    if response.status_code == 200:
+        return response.json()
