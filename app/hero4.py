@@ -4,7 +4,6 @@ from PyQt5.QAxContainer import *
 from PyQt5.QtCore import *
 import time
 
-
 class Kiwoom(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -22,8 +21,6 @@ class Kiwoom(QMainWindow):
         self.screen_no = "0101"  # 실시간 조건검색 화면 번호
 
         self.init_ui()
-
-
 
     def init_ui(self):
         self.condition_combo = QComboBox(self)
@@ -61,7 +58,6 @@ class Kiwoom(QMainWindow):
                 print(f"실시간 조건검색 '{condition_name}' 요청 실패")
                 self.is_real_search_running = False
 
-
     def comm_connect(self):
         self.kiwoom.dynamicCall("CommConnect()")
         self.login_event_loop = QEventLoop()
@@ -92,8 +88,7 @@ class Kiwoom(QMainWindow):
             for condition in conditions:
                 index, name = condition.split('^')
                 self.condition_combo.addItem(name, int(index))
-            
-            # 조건식 로드 완료 후 자동으로 첫 번째 조건 선택 및 검색 시작
+
             if self.condition_combo.count() > 0:
                 self.condition_combo.setCurrentIndex(0)
                 self.auto_start_condition_search()
@@ -126,6 +121,7 @@ class Kiwoom(QMainWindow):
                 self.stock_table.setItem(row, 2, QTableWidgetItem(status))
                 print(f"업데이트: 종목코드: {code}, 종목명: {name}, 상태: {status}")
                 return
+
         row = self.stock_table.rowCount()
         self.stock_table.insertRow(row)
         self.stock_table.setItem(row, 0, QTableWidgetItem(code))
@@ -135,15 +131,13 @@ class Kiwoom(QMainWindow):
 
     def update_txt_file(self):
         try:
-            # 기존 파일의 내용을 읽어옵니다.
             existing_stocks = set()
             try:
                 with open("condition_search_results.txt", 'r', encoding='utf-8') as file:
                     existing_stocks = set(line.strip() for line in file)
             except FileNotFoundError:
-                pass  # 파일이 없으면 빈 set으로 시작합니다.
+                pass
 
-        # 새로운 종목을 추가합니다.
             new_stocks = set()
             for row in range(self.stock_table.rowCount()):
                 name = self.stock_table.item(row, 1).text()
@@ -151,21 +145,12 @@ class Kiwoom(QMainWindow):
                 if status == "편입" and name.strip():
                     new_stocks.add(name)
 
-            # 중복을 제거하고 모든 종목을 합칩니다.
             all_stocks = existing_stocks.union(new_stocks)
 
-            # 결과를 파일에 씁니다.
             with open("condition_search_results.txt", 'w', encoding='utf-8') as file:
-                for stock in sorted(all_stocks):  # 정렬된 순서로 저장
+                for stock in sorted(all_stocks):
                     file.write(f"{stock}\n")
 
             print("텍스트 파일 업데이트 완료")
         except Exception as e:
             print(f"텍스트 파일 업데이트 중 오류 발생: {str(e)}")
-
-    def read_existing_stocks(self):
-        try:
-            with open("condition_search_results.txt", 'r', encoding='utf-8') as file:
-                return set(line.strip() for line in file)
-        except FileNotFoundError:
-            return set()

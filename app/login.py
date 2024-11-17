@@ -12,11 +12,10 @@ from watchdog.events import FileSystemEventHandler
 from dotenv import load_dotenv
 
 
-
 def upload_to_s3(local_file, bucket, s3_file):
     s3 = boto3.client('s3',
-        aws_access_key_id=ACCESS_KEY,
-        aws_secret_access_key=SECRET_KEY)
+                      aws_access_key_id=ACCESS_KEY,
+                      aws_secret_access_key=SECRET_KEY)
     try:
         s3.upload_file(local_file, bucket, s3_file)
         print(f"Upload Successful: {local_file} to {s3_file}")
@@ -38,29 +37,21 @@ def update_json_files(kiwoom, cybos):
     except Exception as e:
         print(f"파일 읽기 중 오류 발생: {str(e)}")
         stock_list = []
-    
+
     stock_list_data = []
     for stock_name in stock_list:
-        stock_info = cybos.get_stock_info(stock_name,stock_list.index(stock_name))
+        stock_info = cybos.get_stock_info(stock_name, stock_list.index(stock_name))
         if stock_info:
             stock_list_data.append(stock_info)
 
-    with open("stock_list.json", "w", encoding='utf-8') as f:
+    with open("주도주리스트.json", "w", encoding='utf-8') as f:
         json.dump(stock_list_data, f, ensure_ascii=False, indent=4)
-        
-    print("stock_list.json 파일 생성 완료")
+    print("주도주리스트.json 파일 생성 완료")
 
     # S3에 업로드
-    upload_to_s3("stock_list.json", 'dev-jeus-bucket', "stock_list.json")
+    upload_to_s3("주도주리스트.json", 'dev-jeus-bucket', "주도주리스트.json")
+
     cybos.update_json_files(stock_list)
-    
-
-    # S3에 업로드
-    for stock_name in stock_list:
-        local_file = f"{stock_name}_data.json"
-        s3_file = f"{stock_name}_data.json"
-        upload_to_s3(local_file, 'dev-jeus-bucket', s3_file)
-
 
 class FileHandler(FileSystemEventHandler):
     def on_modified(self, event):
@@ -75,6 +66,7 @@ def initialize_files():
     print("condition_search_result.txt 파일이 초기화되었습니다.")
 
     # json 파일들 삭제
+
     for file in os.listdir():
         if file.endswith(".json"):
             os.remove(file)
@@ -86,6 +78,7 @@ def initialize_files():
 def main():
     app = QApplication(sys.argv)
     initialize_files()
+
     # Kiwoom API 초기화 및 로그인
     kiwoom = Kiwoom()
     kiwoom.show()
@@ -105,8 +98,11 @@ def main():
     observer.start()
 
     try:
-        sys.exit(app.exec_())
+        app.exec_()
+    except KeyboardInterrupt:
+        print("프로그램을 종료합니다.")
     finally:
+        cybos.stop_all_updaters()
         observer.stop()
         observer.join()
 

@@ -1,4 +1,3 @@
-import string
 import win32com.client
 import pandas as pd
 from datetime import datetime, timedelta
@@ -10,6 +9,7 @@ from botocore.exceptions import NoCredentialsError
 import os
 from dotenv import load_dotenv
 import requests
+import pythoncom
 
 
 class CybosAPI:
@@ -23,6 +23,8 @@ class CybosAPI:
             print("CYBOS Plus가 연결되어 있지 않습니다.")
             exit()
 
+        self.updaters = {}
+
     def get_stock_code(self, stock_name):
         instCpStockCode = win32com.client.Dispatch("CpUtil.CpStockCode")
         code = instCpStockCode.NameToCode(stock_name)
@@ -31,137 +33,130 @@ class CybosAPI:
             return None
         return code
 
-    def create_stock_data_json(self, stock_name):
-    
-        stock_code = self.get_stock_code(stock_name)
-        if stock_code is None:
-            return
-
-        print(f"종목명: {stock_name}, 종목코드: {stock_code}")
-
-        # 과거 데이터 가져오기
-        self.cybos.SetInputValue(0, stock_code)
-        self.cybos.SetInputValue(1, ord('2'))
-        self.cybos.SetInputValue(2, datetime.now().strftime("%Y%m%d"))
-        self.cybos.SetInputValue(3, datetime.now().strftime("%Y%m%d"))
-        self.cybos.SetInputValue(4, 30)
-        self.cybos.SetInputValue(5, [0, 1, 2, 3, 4, 5, 8])
-        self.cybos.SetInputValue(6, ord('m'))
-        self.cybos.SetInputValue(9, ord('1'))
-        self.cybos.BlockRequest()
-
-        num_data = self.cybos.GetHeaderValue(3)
-        data = []
-
-        for i in range(num_data):
-            date = self.cybos.GetDataValue(0, i)
-            time = self.cybos.GetDataValue(1, i)
-            open_price = self.cybos.GetDataValue(2, i)
-            high_price = self.cybos.GetDataValue(3, i)
-            low_price = self.cybos.GetDataValue(4, i)
-            close_price = self.cybos.GetDataValue(5, i)
-            volume = self.cybos.GetDataValue(6, i)
-            trading_value = close_price * volume
-
-            data.append({
-                "Date": f"{date}{time:04d}",
-                "Open": open_price,
-                "High": high_price,
-                "Low": low_price,
-                "Close": close_price,
-                "Volume": volume,
-                "Amount": trading_value
-            })
-        data.sort(key=lambda x: x["Date"])
-        # JSON 파일로 저장
-        with open(f"{stock_name}_data.json", "w") as f:
-            json.dump(data, f, indent=4)
-
-        print(f"{stock_name}_data.json 파일 생성 완료")
-
-        # 분마다 데이터 업데이트 시작
-        self.start_minute_update(stock_code, stock_name)
-    
-    def remove_A(self,stock_code):
+    def remove_A(self, stock_code):
         return stock_code[1:]
-    def get_stock_info(self, stock_name,id):
+
+    def get_stock_info(self, stock_name, id):
         stock_code = self.get_stock_code(stock_name)
         if stock_code is None:
             return None
-        
+
         self.objStockMst.SetInputValue(0, stock_code)
         self.objStockMst.BlockRequest()
+
         _id = id
         stock_code = self.remove_A(stock_code)
 
         return {
-            "_id":_id,
+            "_id": _id,
             "code": stock_code,
-            "name": self.objStockMst.GetHeaderValue(1),  # 종목명
-            "price": self.objStockMst.GetHeaderValue(13),  # 시가
-            "rate": self.objStockMst.GetHeaderValue(12),  # 등락률
-            "status" : "random"
+            "name": self.objStockMst.GetHeaderValue(1),
+            "price": self.objStockMst.GetHeaderValue(13),
+            "rate": self.objStockMst.GetHeaderValue(12),
+            "status": "random"
         }
-
-
-    def start_minute_update(self, stock_code, stock_name):
-        updater = MinuteDataUpdater(self, stock_code, stock_name)
-        updater.start()
 
     def update_json_files(self, stock_list):
         for stock_name in stock_list:
             self.create_stock_data_json(stock_name)
 
-    def get_current_data(self, stock_code):
-        self.objStockCur.SetInputValue(0, stock_code)
-        self.objStockCur.Subscribe()
-        time.sleep(1)
+    def create_stock_data_json(self, stock_name):
+        pythoncom.CoInitialize()
+        try:
+            stock_code = self.get_stock_code(stock_name)
+            if stock_code is None:
+                return
 
-        current_time = datetime.now().strftime("%Y%m%d%H:%M")
-        current_price = self.objStockCur.GetHeaderValue(13)
-        open_price = self.objStockCur.GetHeaderValue(4)
-        high_price = self.objStockCur.GetHeaderValue(5)
-        low_price = self.objStockCur.GetHeaderValue(6)
-        volume = self.objStockCur.GetHeaderValue(9)
-        trading_value = current_price * volume
+            print(f"종목명: {stock_name}, 종목코드: {stock_code}")
 
-        self.objStockCur.Unsubscribe()
+            self.cybos.SetInputValue(0, stock_code)
+            self.cybos.SetInputValue(1, ord('2'))
+            self.cybos.SetInputValue(2, datetime.now().strftime("%Y%m%d"))
+            self.cybos.SetInputValue(3, datetime.now().strftime("%Y%m%d"))
+            self.cybos.SetInputValue(4, 30)
+            self.cybos.SetInputValue(5, [0, 1, 2, 3, 4, 5, 8])
+            self.cybos.SetInputValue(6, ord('m'))
+            self.cybos.SetInputValue(9, ord('1'))
 
-        return current_time, open_price, high_price, low_price, current_price, trading_value
+            while True:
+                remainCount = self.objCpCybos.GetLimitRemainCount(1)
+                if remainCount == 0:
+                    print("요청 제한에 도달했습니다. 2.5초 대기 후 재시도합니다.")
+                    time.sleep(2.5)
+                else:
+                    self.cybos.BlockRequest()
+                    break
 
-def upload_to_s3(local_file, bucket, s3_file):
-    s3 = boto3.client('s3',
-        aws_access_key_id=ACCESS_KEY,
-        aws_secret_access_key=SECRET_KEY)
-    try:
-        s3.upload_file(local_file, bucket, s3_file)
-        print(f"Upload Successful: {local_file} to {s3_file}")
-        return True
-    except FileNotFoundError:
-        print(f"The file {local_file} was not found")
-        return False
-    except NoCredentialsError:
-        print("Credentials not available")
-        return False
+            num_data = self.cybos.GetHeaderValue(3)
+            data = []
 
-class MinuteDataUpdater:
+            for i in range(num_data):
+                date = self.cybos.GetDataValue(0, i)
+                time = self.cybos.GetDataValue(1, i)
+                open_price = self.cybos.GetDataValue(2, i)
+                high_price = self.cybos.GetDataValue(3, i)
+                low_price = self.cybos.GetDataValue(4, i)
+                close_price = self.cybos.GetDataValue(5, i)
+                volume = self.cybos.GetDataValue(6, i)
+                trading_value = close_price * volume
+
+                data.append({
+                    "Date": f"{date}{time:04d}",
+                    "Open": open_price,
+                    "High": high_price,
+                    "Low": low_price,
+                    "Close": close_price,
+                    "Volume": volume,
+                    "Amount": trading_value
+                })
+
+            data.sort(key=lambda x: x["Date"])
+
+            with open(f"{stock_name}데이타.json", "w") as f:
+                json.dump(data, f, indent=4)
+
+            print(f"{stock_name}데이타.json 파일 생성 완료")
+
+            if stock_name not in self.updaters:
+                updater = MinuteDataUpdater(self, stock_code, stock_name)
+                updater.run()
+                self.updaters[stock_name] = updater
+
+        except Exception as e:
+            print(f"오류 발생: {e}")
+        finally:
+            pythoncom.CoUninitialize()
+
+    def stop_all_updaters(self):
+        for updater in self.updaters.values():
+            updater.stop()
+        for updater in self.updaters.values():
+            updater.join()
+        self.updaters.clear()
+
+class MinuteDataUpdater(threading.Thread):
     def __init__(self, cybos_api, stock_code, stock_name):
+        threading.Thread.__init__(self)
         self.cybos_api = cybos_api
         self.stock_code = stock_code
         self.stock_name = stock_name
         self.running = False
 
-    def start(self):
+    def run(self):
         self.running = True
-        thread = threading.Thread(target=self.update_loop)
-        thread.start()
+        while self.running:
+            self.update_data()
+            now = datetime.now()
+            next_minute = (now + timedelta(minutes=1)).replace(second=0, microsecond=0)
+            time_to_wait = (next_minute - now).total_seconds()
+            time.sleep(time_to_wait)
 
     def stop(self):
         self.running = False
 
-    def update_loop(self):
-        while self.running:
-            # 최신 30개의 데이터를 가져옵니다
+    def update_data(self):
+        pythoncom.CoInitialize()
+        try:
             self.cybos_api.cybos.SetInputValue(0, self.stock_code)
             self.cybos_api.cybos.SetInputValue(1, ord('2'))
             self.cybos_api.cybos.SetInputValue(2, datetime.now().strftime("%Y%m%d"))
@@ -170,7 +165,15 @@ class MinuteDataUpdater:
             self.cybos_api.cybos.SetInputValue(5, [0, 1, 2, 3, 4, 5, 8])
             self.cybos_api.cybos.SetInputValue(6, ord('m'))
             self.cybos_api.cybos.SetInputValue(9, ord('1'))
-            self.cybos_api.cybos.BlockRequest()
+
+            while True:
+                remainCount = self.cybos_api.objCpCybos.GetLimitRemainCount(1)
+                if remainCount == 0:
+                    print("요청 제한에 도달했습니다. 2.5초 대기 후 재시도합니다.")
+                    time.sleep(2.5)
+                else:
+                    self.cybos_api.cybos.BlockRequest()
+                    break
 
             num_data = self.cybos_api.cybos.GetHeaderValue(3)
             data = []
@@ -194,42 +197,63 @@ class MinuteDataUpdater:
                     "Volume": volume,
                     "Amount": trading_value
                 })
+
             data.sort(key=lambda x: x["Date"])
-            # JSON 파일로 저장
-            json_file_name = f"{self.stock_name}_data.json"
+
+            json_file_name = f"{self.stock_name}데이타.json"
             with open(json_file_name, "w") as f:
                 json.dump(data, f, indent=4)
 
             print(f"{self.stock_name} 데이터 업데이트 완료: {len(data)} 개의 데이터")
 
-            # S3에 업로드
-            bucket_name = 'dev-jeus-bucket'  # S3 버킷 이름
-            s3_file_name = f"{self.stock_name}_data.json"  # S3에 저장될 파일 이름
+            bucket_name = 'dev-jeus-bucket'
+            s3_file_name = f"{self.stock_name}데이타.json"
             upload_to_s3(json_file_name, bucket_name, s3_file_name)
-            data_to_fastapi(json_file_name)
-            alert_list()
-            alert_chart()
-            # 다음 분의 00초까지 대기
-            now = datetime.now()
-            next_minute = (now + timedelta(minutes=1)).replace(second=0, microsecond=0)
-            time_to_wait = (next_minute - now).total_seconds()
-            time.sleep(time_to_wait)
+
+
+        except Exception as e:
+            print(f"Error updating data for {self.stock_name}: {e}")
+        finally:
+            pythoncom.CoUninitialize()
+
+def upload_to_s3(local_file, bucket, s3_file):
+    s3 = boto3.client('s3', aws_access_key_id=ACCESS_KEY, aws_secret_access_key=SECRET_KEY)
+    try:
+        s3.upload_file(local_file, bucket, s3_file)
+        print(f"Upload Successful: {local_file} to {s3_file}")
+
+        data_to_fastapi(local_file)
+        alert_chart()
+        alert_list()
+        return True
+    except FileNotFoundError:
+        print(f"The file {local_file} was not found")
+        return False
+    except NoCredentialsError:
+        print("Credentials not available")
+        return False
 
 base_url = "https://jeus.site:8080"
 
 def data_to_fastapi(json_file_name):
     url = f"{base_url}/predict"
-    data = {"files": json_file_name}
-    headers = {"Content-Type": "application/json"}
-    response = requests.post(url, json=data, headers=headers)
+    headers = {"accept": "application/json"}
+    with open(json_file_name,'rb') as file:
+        file = file.read()
+        files = {
+            'file': (json_file_name,file,'application/json')
+            }
+    response = requests.post(url, headers=headers,files=files)
     if response.status_code == 200:
         return response.json()
+    print(json_file_name, response.json())
 
 def alert_list():
     url = f"{base_url}/aler_list"
     response = requests.get(url)
-    if response.status_code==200:
+    if response.status_code == 200:
         return response.json()
+
 def alert_chart():
     url = f"{base_url}/alert_chart"
     response = requests.get(url)
