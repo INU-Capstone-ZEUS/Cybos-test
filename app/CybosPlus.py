@@ -69,48 +69,48 @@ class CybosAPI:
 
             print(f"종목명: {stock_name}, 종목코드: {stock_code}")
 
-            self.cybos.SetInputValue(0, stock_code)
-            self.cybos.SetInputValue(1, ord('2'))
-            self.cybos.SetInputValue(2, datetime.now().strftime("%Y%m%d"))
-            self.cybos.SetInputValue(3, datetime.now().strftime("%Y%m%d"))
-            self.cybos.SetInputValue(4, 30)
-            self.cybos.SetInputValue(5, [0, 1, 2, 3, 4, 5, 8])
-            self.cybos.SetInputValue(6, ord('m'))
-            self.cybos.SetInputValue(9, ord('1'))
+            self.cybos_api.cybos.SetInputValue(0, self.stock_code)
+            self.cybos_api.cybos.SetInputValue(1, ord('2'))
+            self.cybos_api.cybos.SetInputValue(2, datetime.now().strftime("%Y%m%d"))
+            self.cybos_api.cybos.SetInputValue(3, datetime.now().strftime("%Y%m%d"))
+            self.cybos_api.cybos.SetInputValue(4, 30)
+            self.cybos_api.cybos.SetInputValue(5, [0, 1, 2, 3, 4, 5, 8])
+            self.cybos_api.cybos.SetInputValue(6, ord('m'))
+            self.cybos_api.cybos.SetInputValue(9, ord('1'))
 
             while True:
-                remainCount = self.objCpCybos.GetLimitRemainCount(1)
+                remainCount = self.cybos_api.objCpCybos.GetLimitRemainCount(1)
                 if remainCount == 0:
                     print("요청 제한에 도달했습니다. 2.5초 대기 후 재시도합니다.")
                     time.sleep(2.5)
                 else:
-                    self.cybos.BlockRequest()
+                    self.cybos_api.cybos.BlockRequest()
                     break
 
-            num_data = self.cybos.GetHeaderValue(3)
+            num_data = self.cybos_api.cybos.GetHeaderValue(3)
             data = []
 
             for i in range(num_data):
-                date = self.cybos.GetDataValue(0, i)
-                time = self.cybos.GetDataValue(1, i)
-                open_price = self.cybos.GetDataValue(2, i)
-                high_price = self.cybos.GetDataValue(3, i)
-                low_price = self.cybos.GetDataValue(4, i)
-                close_price = self.cybos.GetDataValue(5, i)
-                volume = self.cybos.GetDataValue(6, i)
-                trading_value = close_price * volume
+                date = self.cybos_api.cybos.GetDataValue(0, i)
+                time = self.cybos_api.cybos.GetDataValue(1, i)
+                open_price = str(self.cybos_api.cybos.GetDataValue(2, i))
+                high_price = str(self.cybos_api.cybos.GetDataValue(3, i))
+                low_price = str(self.cybos_api.cybos.GetDataValue(4, i))
+                end_price = str(self.cybos_api.cybos.GetDataValue(5, i))
+                volume = self.cybos_api.cybos.GetDataValue(6, i)
+                amount = str(volume * int(end_price))
 
                 data.append({
                     "Date": f"{date}{time:04d}",
                     "Open": open_price,
                     "High": high_price,
                     "Low": low_price,
-                    "Close": close_price,
-                    "Volume": volume,
-                    "Amount": trading_value
+                    "End": end_price,
+                    "Amount": amount
                 })
 
             data.sort(key=lambda x: x["Date"])
+
 
             with open(f"{stock_name}데이타.json", "w") as f:
                 json.dump(data, f, indent=4)
@@ -181,35 +181,33 @@ class MinuteDataUpdater(threading.Thread):
             for i in range(num_data):
                 date = self.cybos_api.cybos.GetDataValue(0, i)
                 time = self.cybos_api.cybos.GetDataValue(1, i)
-                open_price = self.cybos_api.cybos.GetDataValue(2, i)
-                high_price = self.cybos_api.cybos.GetDataValue(3, i)
-                low_price = self.cybos_api.cybos.GetDataValue(4, i)
-                close_price = self.cybos_api.cybos.GetDataValue(5, i)
+                open_price = str(self.cybos_api.cybos.GetDataValue(2, i))
+                high_price = str(self.cybos_api.cybos.GetDataValue(3, i))
+                low_price = str(self.cybos_api.cybos.GetDataValue(4, i))
+                end_price = str(self.cybos_api.cybos.GetDataValue(5, i))
                 volume = self.cybos_api.cybos.GetDataValue(6, i)
-                trading_value = close_price * volume
+                amount = str(volume * int(end_price))
 
                 data.append({
                     "Date": f"{date}{time:04d}",
                     "Open": open_price,
                     "High": high_price,
                     "Low": low_price,
-                    "Close": close_price,
-                    "Volume": volume,
-                    "Amount": trading_value
+                    "End": end_price,
+                    "Amount": amount
                 })
 
             data.sort(key=lambda x: x["Date"])
 
             json_file_name = f"{self.stock_name}데이타.json"
-            with open(json_file_name, "w") as f:
-                json.dump(data, f, indent=4)
+            with open(json_file_name, "w", encoding='utf-8') as f:
+                json.dump(data, f, indent=4, ensure_ascii=False)
 
             print(f"{self.stock_name} 데이터 업데이트 완료: {len(data)} 개의 데이터")
 
             bucket_name = 'dev-jeus-bucket'
             s3_file_name = f"{self.stock_name}데이타.json"
             upload_to_s3(json_file_name, bucket_name, s3_file_name)
-
 
         except Exception as e:
             print(f"Error updating data for {self.stock_name}: {e}")
