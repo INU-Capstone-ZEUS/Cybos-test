@@ -28,6 +28,7 @@ def upload_to_s3(local_file, bucket, s3_file):
         return False
 
 def update_json_files(kiwoom, cybos):
+    
     try:
         with open("condition_search_results.txt", 'r', encoding='utf-8') as file:
             stock_list = [line.strip() for line in file if line.strip()]
@@ -37,7 +38,7 @@ def update_json_files(kiwoom, cybos):
     except Exception as e:
         print(f"파일 읽기 중 오류 발생: {str(e)}")
         stock_list = []
-
+    
     stock_list_data = []
     for stock_name in stock_list:
         stock_info = cybos.get_stock_info(stock_name, stock_list.index(stock_name))
@@ -47,16 +48,21 @@ def update_json_files(kiwoom, cybos):
     with open("주도주리스트.json", "w", encoding='utf-8') as f:
         json.dump(stock_list_data, f, ensure_ascii=False, indent=4)
     print("주도주리스트.json 파일 생성 완료")
-
+    
     # S3에 업로드
     upload_to_s3("주도주리스트.json", 'dev-jeus-bucket', "주도주리스트.json")
 
     cybos.update_json_files(stock_list)
 
 class FileHandler(FileSystemEventHandler):
+    def __init__(self, kiwoom, cybos):
+        self.kiwoom = kiwoom
+        self.cybos = cybos
+
     def on_modified(self, event):
         if not event.is_directory and event.src_path.endswith("condition_search_results.txt"):
             print(f"File {event.src_path} has been modified")
+            update_json_files(self.kiwoom, self.cybos)
 
 def initialize_files():
     # TXT 파일 초기화
@@ -83,11 +89,11 @@ def main():
     cybos = CybosAPI()
 
     # 조건검색 결과 업데이트 시 json 파일 생성/업데이트 및 S3 업로드
-    kiwoom.kiwoom.OnReceiveTrCondition.connect(lambda *args: update_json_files(kiwoom, cybos))
-    kiwoom.kiwoom.OnReceiveRealCondition.connect(lambda *args: update_json_files(kiwoom, cybos))
+    # kiwoom.kiwoom.OnReceiveTrCondition.connect(lambda *args: update_json_files(kiwoom, cybos))
+    # kiwoom.kiwoom.OnReceiveRealCondition.connect(lambda *args: update_json_files(kiwoom, cybos))
 
     # 파일 변경 감지 설정
-    event_handler = FileHandler()
+    event_handler = FileHandler(kiwoom,cybos)
     observer = Observer()
     observer.schedule(event_handler, path='.', recursive=False)
     observer.start()

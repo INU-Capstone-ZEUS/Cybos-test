@@ -1,5 +1,6 @@
 import win32com.client
 import pandas as pd
+import threading
 from datetime import datetime, timedelta
 import time
 import threading
@@ -41,7 +42,7 @@ class CybosAPI:
 
         # 현재가 정보 요청
         self.objStockMst.SetInputValue(0, stock_code)
-        self.objStockMst.BlockRequest()
+        
 
         # 현재가
         current_price = self.objStockMst.GetHeaderValue(13)
@@ -55,8 +56,8 @@ class CybosAPI:
         self.cybos.SetInputValue(5, [5]) # 종가
         self.cybos.SetInputValue(6, ord('m')) # 분봉
         self.cybos.SetInputValue(9, ord('1')) # 수정주가 사용
-
-        self.cybos.BlockRequest()
+        print("check1")
+        
 
         if self.cybos.GetHeaderValue(3) >= 2: # 데이터가 2개 이상인 경우
             prev_price = self.cybos.GetDataValue(0, 1) # 1분 전 종가
@@ -67,6 +68,7 @@ class CybosAPI:
 
         _id = id
         stock_code = self.remove_A(stock_code)
+        
 
         return {
             "_id": _id,
@@ -98,15 +100,6 @@ class CybosAPI:
             self.cybos.SetInputValue(5, [0, 1, 2, 3, 4, 5, 8])
             self.cybos.SetInputValue(6, ord('m'))
             self.cybos.SetInputValue(9, ord('1'))
-
-            while True:
-                remainCount = self.objCpCybos.GetLimitRemainCount(1)
-                if remainCount == 0:
-                    print("요청 제한에 도달했습니다. 2.5초 대기 후 재시도합니다.")
-                    time.sleep(2.5)
-                else:
-                    self.cybos.BlockRequest()
-                    break
 
             num_data = self.cybos.GetHeaderValue(3)
             data = []
@@ -163,18 +156,33 @@ class MinuteDataUpdater(threading.Thread):
         self.stock_code = stock_code
         self.stock_name = stock_name
         self.running = False
+        self.timer = None
 
     def run(self):
         self.running = True
-        while self.running:
-            self.update_data()
-            now = datetime.now()
-            next_minute = (now + timedelta(minutes=1)).replace(second=0, microsecond=0)
-            time_to_wait = (next_minute - now).total_seconds()
-            time.sleep(time_to_wait)
+        self.schedule_next_update()
+    
+    def schedule_next_update(self):
+        print("업데이트 시작")
+        if not self.running:
+            return
+
+        now = datetime.now()
+        next_minute = (now + timedelta(minutes=1)).replace(second=0, microsecond=0)
+        delay = (next_minute - now).total_seconds()
+
+        self.timer = threading.Timer(delay, self.perform_update)
+        self.timer.start()
+
+    def perform_update(self):
+        print("update start")
+        self.update_data()
+        self.schedule_next_update()
 
     def stop(self):
         self.running = False
+        if self.timer:
+            self.timer.cancel()
 
     def update_data(self):
         pythoncom.CoInitialize()
@@ -187,19 +195,18 @@ class MinuteDataUpdater(threading.Thread):
             self.cybos_api.cybos.SetInputValue(5, [0, 1, 2, 3, 4, 5, 8])
             self.cybos_api.cybos.SetInputValue(6, ord('m'))
             self.cybos_api.cybos.SetInputValue(9, ord('1'))
-
-            while True:
-                remainCount = self.cybos_api.objCpCybos.GetLimitRemainCount(1)
-                if remainCount == 0:
-                    print("요청 제한에 도달했습니다. 2.5초 대기 후 재시도합니다.")
-                    time.sleep(2.5)
-                else:
-                    self.cybos_api.cybos.BlockRequest()
-                    break
-
+            # while True:
+            #     remainCount = self.cybos_api.objCpCybos.GetLimitRemainCount(1)
+            #     print(remainCount)
+            #     if remainCount == 0:
+            #         print("요청 제한에 도달했습니다. 2.5초 대기 후 재시도합니다.")
+            #         time.sleep(2.5)
+            #     else:
+            #         self.cybos_api.cybos.BlockRequest()
+            #         break
+            print("check")
             num_data = self.cybos_api.cybos.GetHeaderValue(3)
             data = []
-
             for i in range(num_data):
                 date = self.cybos_api.cybos.GetDataValue(0, i)
                 time = self.cybos_api.cybos.GetDataValue(1, i)
@@ -221,9 +228,9 @@ class MinuteDataUpdater(threading.Thread):
                     "End": end_price,
                     "Amount": amount
                 })
-
+        
             data.sort(key=lambda x: x["Date"])
-
+            print(data)
             json_file_name = f"{self.stock_name}데이타.json"
             with open(json_file_name, "w", encoding='utf-8') as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
@@ -232,7 +239,6 @@ class MinuteDataUpdater(threading.Thread):
             bucket_name = 'dev-jeus-bucket'
             s3_file_name = f"{self.stock_name}데이타.json"
             upload_to_s3(json_file_name, bucket_name, s3_file_name)
-            data_to_fastapi(json_file_name)
 
         except Exception as e:
             print(f"Error updating data for {self.stock_name}: {e}")

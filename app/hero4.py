@@ -150,6 +150,6 @@ class Kiwoom(QMainWindow):
                 for stock in sorted(all_stocks):
                     file.write(f"{stock}\n")
 
-            print("텍스트 파일 업데이트 완료")
+            print("텍스트 파일 업데이트 완료\n")
         except Exception as e:
             print(f"텍스트 파일 업데이트 중 오류 발생: {str(e)}")
