@@ -39,26 +39,29 @@ class CybosAPI:
         if stock_code is None:
             return None
 
+        # 현재가 정보 요청
         self.objStockMst.SetInputValue(0, stock_code)
         self.objStockMst.BlockRequest()
 
+        # 현재가
         current_price = self.objStockMst.GetHeaderValue(13)
 
-        self.cybos.SetInputValue(0, stock_code)
-        self.cybos.SetInputValue(1, ord('2'))
-        self.cybos.SetInputValue(2, datetime.now().strftime("%Y%m%d"))
-        self.cybos.SetInputValue(3, datetime.now().strftime("%Y%m%d"))
-        self.cybos.SetInputValue(4, 2)
-        self.cybos.SetInputValue(5, [5])
-        self.cybos.SetInputValue(6, ord('m'))
-        self.cybos.SetInputValue(9, ord('1'))
+        # 1분 전 종가 구하기
+        self.cybos.SetInputValue(0, stock_code) # 종목코드
+        self.cybos.SetInputValue(1, ord('2')) # 요청구분
+        self.cybos.SetInputValue(2, datetime.now().strftime("%Y%m%d")) # 시작일자
+        self.cybos.SetInputValue(3, datetime.now().strftime("%Y%m%d")) # 종료일자
+        self.cybos.SetInputValue(4, 2) # 최근 2개 데이터
+        self.cybos.SetInputValue(5, [5]) # 종가
+        self.cybos.SetInputValue(6, ord('m')) # 분봉
+        self.cybos.SetInputValue(9, ord('1')) # 수정주가 사용
 
         self.cybos.BlockRequest()
 
-        if self.cybos.GetHeaderValue(3) >= 2:
-            prev_price = self.cybos.GetDataValue(0, 1)
+        if self.cybos.GetHeaderValue(3) >= 2: # 데이터가 2개 이상인 경우
+            prev_price = self.cybos.GetDataValue(0, 1) # 1분 전 종가
             rate = ((current_price - prev_price) / prev_price * 100)
-            rate = round(rate, 2)
+            rate = round(rate, 2) # 소수점 2자리까지 반올림
         else:
             rate = 0.0
 
@@ -73,7 +76,8 @@ class CybosAPI:
             "rate": rate,
             "status": "random"
         }
-    def update_json_files(self,stock_list):
+
+    def update_json_files(self, stock_list):
         for stock_name in stock_list:
             self.create_stock_data_json(stock_name)
 
@@ -116,7 +120,6 @@ class CybosAPI:
                 end_price = str(self.cybos.GetDataValue(5, i))
                 volume = self.cybos.GetDataValue(6, i)
                 amount = str(volume * int(end_price))
-
                 hour = str(time // 100).zfill(2)
                 minute = str(time % 100).zfill(2)
                 formatted_date = f"{date}{hour}:{minute}"
@@ -132,20 +135,13 @@ class CybosAPI:
 
             data.sort(key=lambda x: x["Date"])
 
-            json_file_name = f"{stock_name}데이타.json"
-            with open(json_file_name, "w", encoding='utf-8') as f:
-                json.dump(data, f, indent=4, ensure_ascii=False)
-
-            print(f"{json_file_name} 파일 생성 완료")
-
-            bucket_name = 'dev-jeus-bucket'
-            s3_file_name = f"{stock_name}데이타.json"
-            upload_to_s3(json_file_name, bucket_name, s3_file_name)
-            data_to_fastapi(json_file_name)
+            with open(f"{stock_name}데이타.json", "w") as f:
+                json.dump(data, f, indent=4)
+            print(f"{stock_name}데이타.json 파일 생성 완료")
 
             if stock_name not in self.updaters:
                 updater = MinuteDataUpdater(self, stock_code, stock_name)
-                updater.start()
+                updater.run()
                 self.updaters[stock_name] = updater
 
         except Exception as e:
@@ -171,11 +167,11 @@ class MinuteDataUpdater(threading.Thread):
     def run(self):
         self.running = True
         while self.running:
+            self.update_data()
             now = datetime.now()
             next_minute = (now + timedelta(minutes=1)).replace(second=0, microsecond=0)
             time_to_wait = (next_minute - now).total_seconds()
             time.sleep(time_to_wait)
-            self.update_data()
 
     def stop(self):
         self.running = False
@@ -213,7 +209,6 @@ class MinuteDataUpdater(threading.Thread):
                 end_price = str(self.cybos_api.cybos.GetDataValue(5, i))
                 volume = self.cybos_api.cybos.GetDataValue(6, i)
                 amount = str(volume * int(end_price))
-
                 hour = str(time // 100).zfill(2)
                 minute = str(time % 100).zfill(2)
                 formatted_date = f"{date}{hour}:{minute}"
@@ -232,7 +227,6 @@ class MinuteDataUpdater(threading.Thread):
             json_file_name = f"{self.stock_name}데이타.json"
             with open(json_file_name, "w", encoding='utf-8') as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
-
             print(f"{self.stock_name} 데이터 업데이트 완료: {len(data)} 개의 데이터")
 
             bucket_name = 'dev-jeus-bucket'

@@ -18,7 +18,7 @@ class Kiwoom(QMainWindow):
 
         self.login_event_loop = None
         self.condition_event_loop = None
-        self.screen_no = "0101"  # 실시간 조건검색 화면 번호
+        self.screen_no = "0101" # 실시간 조건검색 화면 번호
 
         self.init_ui()
 
@@ -49,7 +49,7 @@ class Kiwoom(QMainWindow):
             condition_index = self.condition_combo.currentData()
             condition_name = self.condition_combo.currentText()
             ret = self.kiwoom.dynamicCall("SendCondition(QString, QString, int, int)",
-                                          self.screen_no, condition_name, condition_index, 1)  # 실시간 조건검색 활성화
+                                          self.screen_no, condition_name, condition_index, 1) # 실시간 조건검색 활성화
             if ret == 1:
                 print(f"실시간 조건검색 '{condition_name}' 요청 성공")
                 self.is_real_search_running = True
@@ -88,7 +88,6 @@ class Kiwoom(QMainWindow):
             for condition in conditions:
                 index, name = condition.split('^')
                 self.condition_combo.addItem(name, int(index))
-
             if self.condition_combo.count() > 0:
                 self.condition_combo.setCurrentIndex(0)
                 self.auto_start_condition_search()
@@ -154,13 +153,3 @@ class Kiwoom(QMainWindow):
             print("텍스트 파일 업데이트 완료")
         except Exception as e:
             print(f"텍스트 파일 업데이트 중 오류 발생: {str(e)}")
-    def start_condition_search(self):
-        if self.condition_combo.currentIndex() >= 0:
-            condition_index = self.condition_combo.currentData()
-            condition_name = self.condition_combo.currentText()
-            ret = self.kiwoom.dynamicCall("SendCondition(QString, QString, int, int)",
-                                        self.screen_no, condition_name, condition_index, 1)
-            if ret == 1:
-                print(f"실시간 조건검색 '{condition_name}' 요청 성공")
-            else:
-                print(f"실시간 조건검색 '{condition_name}' 요청 실패")
