@@ -39,25 +39,31 @@ def update_json_files(kiwoom, cybos):
         stock_list = []
 
     stock_list_data = []
-    for stock_name in stock_list:
-        stock_info = cybos.get_stock_info(stock_name, stock_list.index(stock_name))
-        if stock_info:
-            stock_list_data.append(stock_info)
+    for index, stock_name in enumerate(stock_list):
+        try:
+            stock_info = cybos.get_stock_info(stock_name, index)
+            if stock_info:
+                stock_list_data.append(stock_info)
+                print(f"종목 정보 추가: {stock_info}")
+        except Exception as e:
+            print(f"{stock_name} 정보 가져오기 실패: {str(e)}")
 
-    with open("주도주리스트.json", "w", encoding='utf-8') as f:
-        json.dump(stock_list_data, f, ensure_ascii=False, indent=4)
-    print("주도주리스트.json 파일 생성 완료")
+    try:
+        with open("주도주리스트.json", "w", encoding='utf-8') as f:
+            json.dump(stock_list_data, f, ensure_ascii=False, indent=4)
+        print("주도주리스트.json 파일 생성 완료")
+        # S3에 업로드
+        upload_to_s3("주도주리스트.json", 'dev-jeus-bucket', "주도주리스트.json")
+    except Exception as e:
+        print(f"주도주리스트.json 파일 생성 또는 업로드 실패: {str(e)}")
 
-    # S3에 업로드
-    upload_to_s3("주도주리스트.json", 'dev-jeus-bucket', "주도주리스트.json")
-
+    # 모든 종목 데이터를 한 번에 업데이트
     cybos.update_json_files(stock_list)
 
 class FileHandler(FileSystemEventHandler):
     def on_modified(self, event):
         if not event.is_directory and event.src_path.endswith("condition_search_results.txt"):
             print(f"File {event.src_path} has been modified")
-            upload_to_s3("condition_search_results.txt", 'dev-jeus-bucket', "condition_search_results.txt")
 
 def initialize_files():
     # TXT 파일 초기화
@@ -66,14 +72,10 @@ def initialize_files():
     print("condition_search_result.txt 파일이 초기화되었습니다.")
 
     # json 파일들 삭제
-
     for file in os.listdir():
         if file.endswith(".json"):
             os.remove(file)
             print(f"{file} 파일이 삭제되었습니다.")
-
-    # S3에 초기화된 파일 업로드
-    upload_to_s3("condition_search_results.txt", 'dev-jeus-bucket', "condition_search_results.txt")
 
 def main():
     app = QApplication(sys.argv)
@@ -97,8 +99,12 @@ def main():
     observer.schedule(event_handler, path='.', recursive=False)
     observer.start()
 
+    kiwoom.start_condition_search()
+
     try:
-        app.exec_()
+        while True:
+            app.processEvents()  # 이벤트 루프 처리
+            time.sleep(0.1)  # CPU 사용량 감소
     except KeyboardInterrupt:
         print("프로그램을 종료합니다.")
     finally:

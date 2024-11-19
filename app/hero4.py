@@ -154,3 +154,13 @@ class Kiwoom(QMainWindow):
             print("텍스트 파일 업데이트 완료")
         except Exception as e:
             print(f"텍스트 파일 업데이트 중 오류 발생: {str(e)}")
+    def start_condition_search(self):
+        if self.condition_combo.currentIndex() >= 0:
+            condition_index = self.condition_combo.currentData()
+            condition_name = self.condition_combo.currentText()
+            ret = self.kiwoom.dynamicCall("SendCondition(QString, QString, int, int)",
+                                        self.screen_no, condition_name, condition_index, 1)
+            if ret == 1:
+                print(f"실시간 조건검색 '{condition_name}' 요청 성공")
+            else:
+                print(f"실시간 조건검색 '{condition_name}' 요청 실패")
