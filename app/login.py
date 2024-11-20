@@ -1,6 +1,7 @@
 import json
 import sys
 from PyQt5.QtWidgets import QApplication
+import requests
 from hero4 import Kiwoom
 from CybosPlus import CybosAPI
 import boto3
@@ -11,7 +12,13 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from dotenv import load_dotenv
 
+base_url = "https://jeus.site:8080"
 
+def alert_list():
+    url = f"{base_url}/alert_list"
+    response = requests.get(url)
+    if response.status_code == 200:
+        return response.json()
 def upload_to_s3(local_file, bucket, s3_file):
     s3 = boto3.client('s3',
                       aws_access_key_id=ACCESS_KEY,
@@ -54,6 +61,7 @@ def update_json_files(kiwoom, cybos):
 
     cybos.update_json_files(stock_list)
 
+
 class FileHandler(FileSystemEventHandler):
     def __init__(self, kiwoom, cybos):
         self.kiwoom = kiwoom
@@ -89,8 +97,8 @@ def main():
     cybos = CybosAPI()
 
     # 조건검색 결과 업데이트 시 json 파일 생성/업데이트 및 S3 업로드
-    kiwoom.kiwoom.OnReceiveTrCondition.connect(lambda *args: update_json_files(kiwoom, cybos))
-    kiwoom.kiwoom.OnReceiveRealCondition.connect(lambda *args: update_json_files(kiwoom, cybos))
+    # kiwoom.kiwoom.OnReceiveTrCondition.connect(lambda *args: update_json_files(kiwoom, cybos))
+    # kiwoom.kiwoom.OnReceiveRealCondition.connect(lambda *args: update_json_files(kiwoom, cybos))
     # 파일 변경 감지 설정
     event_handler = FileHandler(kiwoom,cybos)
     observer = Observer()
