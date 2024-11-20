@@ -2,12 +2,10 @@ import win32com.client
 import pandas as pd
 import threading
 from datetime import datetime, timedelta
-import time
 import threading
 import boto3
 import json
 from botocore.exceptions import NoCredentialsError
-import os
 from dotenv import load_dotenv
 import requests
 import pythoncom
@@ -15,10 +13,7 @@ import pythoncom
 
 class CybosAPI:
     def __init__(self):
-        self.cybos = win32com.client.Dispatch("CpSysDib.StockChart")
         self.objCpCybos = win32com.client.Dispatch("CpUtil.CpCybos")
-        self.objStockMst = win32com.client.Dispatch("DsCbo1.StockMst")
-        self.objStockCur = win32com.client.Dispatch("DsCbo1.StockCur")
         if self.objCpCybos.IsConnect == 0:
             print("CYBOS Plus가 연결되어 있지 않습니다.")
             exit()
@@ -35,49 +30,67 @@ class CybosAPI:
     def remove_A(self, stock_code):
         return stock_code[1:]
 
+    
+    
     def get_stock_info(self, stock_name, id):
-        stock_code = self.get_stock_code(stock_name)
-        if stock_code is None:
+        pythoncom.CoInitialize()
+        try:
+            cybos = win32com.client.Dispatch("CpSysDib.StockChart")
+            objStockMst = win32com.client.Dispatch("DsCbo1.StockMst")
+            stock_code = self.get_stock_code(stock_name)
+            if stock_code is None:
+                return None
+
+            # 현재가 정보 요청
+            print(stock_code)
+            objStockMst.SetInputValue(0, stock_code)
+            print("종목정보 검색")
+            objStockMst.BlockRequest()
+            print("완료")
+
+            # 현재가
+            current_price = objStockMst.GetHeaderValue(13)
+            print(current_price)
+
+            # 1분 전 종가 구하기
+            cybos.SetInputValue(0, stock_code)
+            cybos.SetInputValue(1, ord('2'))
+            cybos.SetInputValue(2, datetime.now().strftime("%Y%m%d"))
+            cybos.SetInputValue(3, datetime.now().strftime("%Y%m%d"))
+            cybos.SetInputValue(4, 2)
+            cybos.SetInputValue(5, [5])
+            cybos.SetInputValue(6, ord('m'))
+            cybos.SetInputValue(9, ord('1'))
+
+            print("check1")
+            cybos.BlockRequest()
+
+            if cybos.GetHeaderValue(3) >= 2:
+                prev_price = cybos.GetDataValue(0, 1)
+                rate = ((current_price - prev_price) / prev_price * 100)
+                rate = round(rate, 2)
+            else:
+                rate = 0.0
+
+            _id = id
+            stock_code = self.remove_A(stock_code)
+
+            return {
+                "_id": _id,
+                "code": stock_code,
+                "name": objStockMst.GetHeaderValue(1),
+                "price": current_price,
+                "rate": rate,
+                "status": "random"
+            }
+        except pythoncom.com_error as e:
+            print(f"COM 오류 발생: {e}")
             return None
-
-        # 현재가 정보 요청
-        self.objStockMst.SetInputValue(0, stock_code)
-        
-
-        # 현재가
-        current_price = self.objStockMst.GetHeaderValue(13)
-
-        # 1분 전 종가 구하기
-        self.cybos.SetInputValue(0, stock_code) # 종목코드
-        self.cybos.SetInputValue(1, ord('2')) # 요청구분
-        self.cybos.SetInputValue(2, datetime.now().strftime("%Y%m%d")) # 시작일자
-        self.cybos.SetInputValue(3, datetime.now().strftime("%Y%m%d")) # 종료일자
-        self.cybos.SetInputValue(4, 2) # 최근 2개 데이터
-        self.cybos.SetInputValue(5, [5]) # 종가
-        self.cybos.SetInputValue(6, ord('m')) # 분봉
-        self.cybos.SetInputValue(9, ord('1')) # 수정주가 사용
-        print("check1")
-        
-
-        if self.cybos.GetHeaderValue(3) >= 2: # 데이터가 2개 이상인 경우
-            prev_price = self.cybos.GetDataValue(0, 1) # 1분 전 종가
-            rate = ((current_price - prev_price) / prev_price * 100)
-            rate = round(rate, 2) # 소수점 2자리까지 반올림
-        else:
-            rate = 0.0
-
-        _id = id
-        stock_code = self.remove_A(stock_code)
-        
-
-        return {
-            "_id": _id,
-            "code": stock_code,
-            "name": self.objStockMst.GetHeaderValue(1),
-            "price": current_price,
-            "rate": rate,
-            "status": "random"
-        }
+        except Exception as e:
+            print(f"Error in get_stock_info: {e}")
+            return None
+        finally:
+            pythoncom.CoUninitialize()
 
     def update_json_files(self, stock_list):
         for stock_name in stock_list:
@@ -86,32 +99,34 @@ class CybosAPI:
     def create_stock_data_json(self, stock_name):
         pythoncom.CoInitialize()
         try:
+            cybos = win32com.client.Dispatch("CpSysDib.StockChart")
             stock_code = self.get_stock_code(stock_name)
             if stock_code is None:
                 return
 
             print(f"종목명: {stock_name}, 종목코드: {stock_code}")
 
-            self.cybos.SetInputValue(0, stock_code)
-            self.cybos.SetInputValue(1, ord('2'))
-            self.cybos.SetInputValue(2, datetime.now().strftime("%Y%m%d"))
-            self.cybos.SetInputValue(3, datetime.now().strftime("%Y%m%d"))
-            self.cybos.SetInputValue(4, 30)
-            self.cybos.SetInputValue(5, [0, 1, 2, 3, 4, 5, 8])
-            self.cybos.SetInputValue(6, ord('m'))
-            self.cybos.SetInputValue(9, ord('1'))
+            cybos.SetInputValue(0, stock_code)
+            cybos.SetInputValue(1, ord('2'))
+            cybos.SetInputValue(2, datetime.now().strftime("%Y%m%d"))
+            cybos.SetInputValue(3, datetime.now().strftime("%Y%m%d"))
+            cybos.SetInputValue(4, 30)
+            cybos.SetInputValue(5, [0, 1, 2, 3, 4, 5, 8])
+            cybos.SetInputValue(6, ord('m'))
+            cybos.SetInputValue(9, ord('1'))
+            cybos.BlockRequest()
 
-            num_data = self.cybos.GetHeaderValue(3)
+            num_data = cybos.GetHeaderValue(3)
             data = []
 
             for i in range(num_data):
-                date = self.cybos.GetDataValue(0, i)
-                time = self.cybos.GetDataValue(1, i)
-                open_price = str(self.cybos.GetDataValue(2, i))
-                high_price = str(self.cybos.GetDataValue(3, i))
-                low_price = str(self.cybos.GetDataValue(4, i))
-                end_price = str(self.cybos.GetDataValue(5, i))
-                volume = self.cybos.GetDataValue(6, i)
+                date = cybos.GetDataValue(0, i)
+                time = cybos.GetDataValue(1, i)
+                open_price = str(cybos.GetDataValue(2, i))
+                high_price = str(cybos.GetDataValue(3, i))
+                low_price = str(cybos.GetDataValue(4, i))
+                end_price = str(cybos.GetDataValue(5, i))
+                volume = cybos.GetDataValue(6, i)
                 amount = str(volume * int(end_price))
                 hour = str(time // 100).zfill(2)
                 minute = str(time % 100).zfill(2)
@@ -125,7 +140,7 @@ class CybosAPI:
                     "End": end_price,
                     "Amount": amount
                 })
-
+            
             data.sort(key=lambda x: x["Date"])
 
             with open(f"{stock_name}데이타.json", "w") as f:
@@ -133,7 +148,7 @@ class CybosAPI:
             print(f"{stock_name}데이타.json 파일 생성 완료")
 
             if stock_name not in self.updaters:
-                updater = MinuteDataUpdater(self, stock_code, stock_name)
+                updater = MinuteDataUpdater(stock_code, stock_name)
                 updater.run()
                 self.updaters[stock_name] = updater
 
@@ -150,9 +165,8 @@ class CybosAPI:
         self.updaters.clear()
 
 class MinuteDataUpdater(threading.Thread):
-    def __init__(self, cybos_api, stock_code, stock_name):
+    def __init__(self, stock_code, stock_name):
         threading.Thread.__init__(self)
-        self.cybos_api = cybos_api
         self.stock_code = stock_code
         self.stock_name = stock_name
         self.running = False
@@ -187,34 +201,27 @@ class MinuteDataUpdater(threading.Thread):
     def update_data(self):
         pythoncom.CoInitialize()
         try:
-            self.cybos_api.cybos.SetInputValue(0, self.stock_code)
-            self.cybos_api.cybos.SetInputValue(1, ord('2'))
-            self.cybos_api.cybos.SetInputValue(2, datetime.now().strftime("%Y%m%d"))
-            self.cybos_api.cybos.SetInputValue(3, datetime.now().strftime("%Y%m%d"))
-            self.cybos_api.cybos.SetInputValue(4, 30)
-            self.cybos_api.cybos.SetInputValue(5, [0, 1, 2, 3, 4, 5, 8])
-            self.cybos_api.cybos.SetInputValue(6, ord('m'))
-            self.cybos_api.cybos.SetInputValue(9, ord('1'))
-            # while True:
-            #     remainCount = self.cybos_api.objCpCybos.GetLimitRemainCount(1)
-            #     print(remainCount)
-            #     if remainCount == 0:
-            #         print("요청 제한에 도달했습니다. 2.5초 대기 후 재시도합니다.")
-            #         time.sleep(2.5)
-            #     else:
-            #         self.cybos_api.cybos.BlockRequest()
-            #         break
-            print("check")
-            num_data = self.cybos_api.cybos.GetHeaderValue(3)
+            cybos = win32com.client.Dispatch("CpSysDib.StockChart")
+            cybos.SetInputValue(0, self.stock_code)
+            cybos.SetInputValue(1, ord('2'))
+            cybos.SetInputValue(2, datetime.now().strftime("%Y%m%d"))
+            cybos.SetInputValue(3, datetime.now().strftime("%Y%m%d"))
+            cybos.SetInputValue(4, 30)
+            cybos.SetInputValue(5, [0, 1, 2, 3, 4, 5, 8])
+            cybos.SetInputValue(6, ord('m'))
+            cybos.SetInputValue(9, ord('1'))
+            print("정보 요청 시작")
+            cybos.BlockRequest()
+            num_data = cybos.GetHeaderValue(3)
             data = []
             for i in range(num_data):
-                date = self.cybos_api.cybos.GetDataValue(0, i)
-                time = self.cybos_api.cybos.GetDataValue(1, i)
-                open_price = str(self.cybos_api.cybos.GetDataValue(2, i))
-                high_price = str(self.cybos_api.cybos.GetDataValue(3, i))
-                low_price = str(self.cybos_api.cybos.GetDataValue(4, i))
-                end_price = str(self.cybos_api.cybos.GetDataValue(5, i))
-                volume = self.cybos_api.cybos.GetDataValue(6, i)
+                date = cybos.GetDataValue(0, i)
+                time = cybos.GetDataValue(1, i)
+                open_price = str(cybos.GetDataValue(2, i))
+                high_price = str(cybos.GetDataValue(3, i))
+                low_price = str(cybos.GetDataValue(4, i))
+                end_price = str(cybos.GetDataValue(5, i))
+                volume = cybos.GetDataValue(6, i)
                 amount = str(volume * int(end_price))
                 hour = str(time // 100).zfill(2)
                 minute = str(time % 100).zfill(2)
@@ -230,7 +237,6 @@ class MinuteDataUpdater(threading.Thread):
                 })
         
             data.sort(key=lambda x: x["Date"])
-            print(data)
             json_file_name = f"{self.stock_name}데이타.json"
             with open(json_file_name, "w", encoding='utf-8') as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
