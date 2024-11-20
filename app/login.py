@@ -89,9 +89,8 @@ def main():
     cybos = CybosAPI()
 
     # 조건검색 결과 업데이트 시 json 파일 생성/업데이트 및 S3 업로드
-    # kiwoom.kiwoom.OnReceiveTrCondition.connect(lambda *args: update_json_files(kiwoom, cybos))
-    # kiwoom.kiwoom.OnReceiveRealCondition.connect(lambda *args: update_json_files(kiwoom, cybos))
-
+    kiwoom.kiwoom.OnReceiveTrCondition.connect(lambda *args: update_json_files(kiwoom, cybos))
+    kiwoom.kiwoom.OnReceiveRealCondition.connect(lambda *args: update_json_files(kiwoom, cybos))
     # 파일 변경 감지 설정
     event_handler = FileHandler(kiwoom,cybos)
     observer = Observer()
