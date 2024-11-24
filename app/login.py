@@ -12,6 +12,7 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from dotenv import load_dotenv
 
+
 base_url = "https://jeus.site:8080"
 
 def alert_list():
@@ -46,15 +47,13 @@ def update_json_files(kiwoom, cybos):
         print(f"파일 읽기 중 오류 발생: {str(e)}")
         stock_list = []
     
-    stock_list_data = []
-    for stock_name in stock_list:
-        stock_info = cybos.get_stock_info(stock_name, stock_list.index(stock_name))
-        if stock_info:
-            stock_list_data.append(stock_info)
+    stock_list_data = cybos.get_stock_info(stock_list)
+    
 
     with open("주도주리스트.json", "w", encoding='utf-8') as f:
         json.dump(stock_list_data, f, ensure_ascii=False, indent=4)
     print("주도주리스트.json 파일 생성 완료")
+    
     
     # S3에 업로드
     upload_to_s3("주도주리스트.json", 'dev-jeus-bucket', "주도주리스트.json")

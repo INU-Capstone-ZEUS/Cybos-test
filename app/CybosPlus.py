@@ -11,6 +11,7 @@ import requests
 import pythoncom
 
 
+
 class CybosAPI:
     def __init__(self):
         self.objCpCybos = win32com.client.Dispatch("CpUtil.CpCybos")
@@ -18,6 +19,7 @@ class CybosAPI:
             print("CYBOS Plus가 연결되어 있지 않습니다.")
             exit()
         self.updaters = {}
+        self.list_updater = {}
 
     def get_stock_code(self, stock_name):
         instCpStockCode = win32com.client.Dispatch("CpUtil.CpStockCode")
@@ -32,41 +34,44 @@ class CybosAPI:
 
     
     
-    def get_stock_info(self, stock_name, id):
+    def get_stock_info(self, stock_list):
         pythoncom.CoInitialize()
         try:
             objStockMst = win32com.client.Dispatch("DsCbo1.StockMst")
-            stock_code = self.get_stock_code(stock_name)
-            if stock_code is None:
-                return None
+            stock_list_data = []
 
-            # 현재가 정보 요청
-            objStockMst.SetInputValue(0, stock_code)
-            objStockMst.BlockRequest()
-            # 현재가
-            current_price = objStockMst.GetHeaderValue(11)
-            print(current_price)
-            prev_price = objStockMst.GetHeaderValue(13)
-            diff = objStockMst.GetHeaderValue(12)
+            for id, stock_name in enumerate(stock_list):
+                stock_code = self.get_stock_code(stock_name)
+                if stock_code is None:
+                    continue
 
-            rate = (diff/prev_price)*100
+                # 현재가 정보 요청
+                objStockMst.SetInputValue(0, stock_code)
+                objStockMst.BlockRequest()
 
-            _id = id
-            removed_stock_code = self.remove_A(stock_code)
-            
-            if "stock_list" not in self.updaters:
-                updater = MinuteDataUpdater_Stock_List(self, stock_code, stock_name)
-                updater.run()
-                self.updaters["stock_list"] = updater
-            return {
-                "_id": _id,
-                "code": removed_stock_code,
-                "name": objStockMst.GetHeaderValue(1),
-                "price": current_price,
-                "rate": rate,
-                "status": "random"
-            }
-            
+                # 현재가
+                current_price = objStockMst.GetHeaderValue(11)
+                prev_price = objStockMst.GetHeaderValue(13)
+                diff = objStockMst.GetHeaderValue(12)
+                rate = round((diff / prev_price) * 100, 2)
+                removed_stock_code = self.remove_A(stock_code)
+
+                stock_info = {
+                    "_id": id,
+                    "code": removed_stock_code,
+                    "name": objStockMst.GetHeaderValue(1),
+                    "price": current_price,
+                    "rate": rate,
+                    "status": "random"
+                }
+                stock_list_data.append(stock_info)
+            if "stock_list" not in self.list_updater:
+                list_updater = MinuteDataUpdater_Stock_List(self, stock_list)
+                list_updater.run()
+                self.list_updater["stock_list"] = list_updater
+
+            return stock_list_data
+
         except pythoncom.com_error as e:
             print(f"COM 오류 발생: {e}")
             return None
@@ -130,10 +135,6 @@ class CybosAPI:
             with open(f"{stock_name}데이타.json", "w") as f:
                 json.dump(data, f, indent=4)
             print(f"{stock_name}데이타.json 파일 생성 완료")
-            json_file_name = f"{self.stock_name}데이타.json"
-            bucket_name = 'dev-jeus-bucket'
-            s3_file_name = f"{self.stock_name}데이타.json"
-            upload_to_s3(json_file_name, bucket_name, s3_file_name)
             if stock_name not in self.updaters:
                 updater = MinuteDataUpdater_Stock_Data(self, stock_code, stock_name)
                 updater.run()
@@ -149,10 +150,6 @@ class CybosAPI:
         for updater in self.updaters.values():
             updater.join()
         self.updaters.clear()
-   
-
-        # S3에 업로드
-        upload_to_s3("주도주리스트.json", 'dev-jeus-bucket', "주도주리스트.json")
 
 class MinuteDataUpdater_Stock_Data(threading.Thread):
     def __init__(self, cybos_api, stock_code, stock_name):
@@ -242,11 +239,11 @@ class MinuteDataUpdater_Stock_Data(threading.Thread):
             pythoncom.CoUninitialize()
 
 class MinuteDataUpdater_Stock_List(threading.Thread):
-    def __init__(self, cybos_api, stock_code, stock_name):
+    def __init__(self, cybos_api, stock_list):
         threading.Thread.__init__(self)
         self.cybos_api = cybos_api
-        self.stock_code = stock_code
-        self.stock_name = stock_name
+        self.stock_list = stock_list
+        
         self.running = False
         self.timer = None
 
@@ -272,6 +269,17 @@ class MinuteDataUpdater_Stock_List(threading.Thread):
         if self.timer:
             self.timer.cancel()
 
+    def get_stock_code(self, stock_name):
+        instCpStockCode = win32com.client.Dispatch("CpUtil.CpStockCode")
+        code = instCpStockCode.NameToCode(stock_name)
+        if code == "":
+            print(f"종목명 '{stock_name}'에 해당하는 종목코드를 찾을 수 없습니다.")
+            return None
+        return code
+    
+    def remove_A(self, stock_code):
+        return stock_code[1:]
+    
     def update_leading_stocks(self):
         try:
             with open("condition_search_results.txt", 'r', encoding='utf-8') as file:
@@ -282,12 +290,46 @@ class MinuteDataUpdater_Stock_List(threading.Thread):
         except Exception as e:
             print(f"파일 읽기 중 오류 발생: {str(e)}")
             return
+        
+        pythoncom.CoInitialize()
+        try:
+            objStockMst = win32com.client.Dispatch("DsCbo1.StockMst")
+            stock_list_data = []
 
-        stock_list_data = []
-        for stock_name in stock_list:
-            stock_info = self.cybos_api.get_stock_info(stock_name, stock_list.index(stock_name))
-            if stock_info:
+            for id, stock_name in enumerate(stock_list):
+                stock_code = self.get_stock_code(stock_name)
+                if stock_code is None:
+                    continue
+
+                # 현재가 정보 요청
+                objStockMst.SetInputValue(0, stock_code)
+                objStockMst.BlockRequest()
+
+                # 현재가
+                current_price = objStockMst.GetHeaderValue(11)
+                prev_price = objStockMst.GetHeaderValue(13)
+                diff = objStockMst.GetHeaderValue(12)
+                rate = round((diff / prev_price) * 100, 2)
+                removed_stock_code = self.remove_A(stock_code)
+
+                stock_info = {
+                    "_id": id,
+                    "code": removed_stock_code,
+                    "name": objStockMst.GetHeaderValue(1),
+                    "price": current_price,
+                    "rate": rate,
+                    "status": "random"
+                }
                 stock_list_data.append(stock_info)
+
+        except pythoncom.com_error as e:
+            print(f"COM 오류 발생: {e}")
+            return None
+        except Exception as e:
+            print(f"Error in get_stock_info: {e}")
+            return None
+        finally:
+            pythoncom.CoUninitialize()
 
         with open("주도주리스트.json", "w", encoding='utf-8') as f:
             json.dump(stock_list_data, f, ensure_ascii=False, indent=4)
@@ -351,7 +393,7 @@ def alert_chart():
     response = requests.get(url)
     if response.status_code == 200:
         return response.json()
-    
+
 
 
 
