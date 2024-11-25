@@ -1,3 +1,4 @@
+import os
 import win32com.client
 import pandas as pd
 import threading
@@ -59,16 +60,17 @@ class CybosAPI:
                 stock_info = {
                     "_id": id,
                     "code": removed_stock_code,
-                    "name": objStockMst.GetHeaderValue(1),
+                    "name": stock_name,
                     "price": current_price,
                     "rate": rate,
-                    "status": "random"
+                    "status": 0
                 }
                 stock_list_data.append(stock_info)
             if "stock_list" not in self.list_updater:
                 list_updater = MinuteDataUpdater_Stock_List(self, stock_list)
                 list_updater.run()
                 self.list_updater["stock_list"] = list_updater
+            
 
             return stock_list_data
 
@@ -176,10 +178,9 @@ class MinuteDataUpdater_Stock_Data(threading.Thread):
         self.timer.start()
 
     def perform_update(self):
-        self.schedule_next_update()
         self.update_data()
+        self.schedule_next_update()
         
-
     def stop(self):
         self.running = False
         if self.timer:
@@ -261,8 +262,8 @@ class MinuteDataUpdater_Stock_List(threading.Thread):
         self.timer.start()
 
     def perform_update(self):
-        self.schedule_next_update()
         self.update_leading_stocks()
+        self.schedule_next_update()
 
     def stop(self):
         self.running = False
@@ -295,6 +296,8 @@ class MinuteDataUpdater_Stock_List(threading.Thread):
         try:
             objStockMst = win32com.client.Dispatch("DsCbo1.StockMst")
             stock_list_data = []
+            stock_name_list = []
+            
 
             for id, stock_name in enumerate(stock_list):
                 stock_code = self.get_stock_code(stock_name)
@@ -315,12 +318,16 @@ class MinuteDataUpdater_Stock_List(threading.Thread):
                 stock_info = {
                     "_id": id,
                     "code": removed_stock_code,
-                    "name": objStockMst.GetHeaderValue(1),
+                    "name": stock_name,
                     "price": current_price,
                     "rate": rate,
-                    "status": "random"
+                    "status": 0
                 }
+                stock_name_data = f"{stock_name}데이타.json"
                 stock_list_data.append(stock_info)
+                stock_name_list.append(stock_name_data)
+                
+
 
         except pythoncom.com_error as e:
             print(f"COM 오류 발생: {e}")
@@ -330,18 +337,22 @@ class MinuteDataUpdater_Stock_List(threading.Thread):
             return None
         finally:
             pythoncom.CoUninitialize()
+        
+        print(stock_name_list)
 
-        with open("주도주리스트.json", "w", encoding='utf-8') as f:
+        with open("stocklist.json", "w", encoding='utf-8') as f:
             json.dump(stock_list_data, f, ensure_ascii=False, indent=4)
-        print("주도주리스트.json 파일 업데이트 완료")
-        upload_to_s3_leading_stocks("주도주리스트.json", 'dev-jeus-bucket', "주도주리스트.json")
+        print("stocklist.json 파일 업데이트 완료")
+        upload_to_s3_leading_stocks("stocklist.json", 'dev-jeus-bucket', "stocklist.json",stock_name_list )
 
-def upload_to_s3_leading_stocks(local_file, bucket, s3_file):
+
+def upload_to_s3_leading_stocks(local_file, bucket, s3_file, stock_name_list):
     s3 = boto3.client('s3',
                       aws_access_key_id=ACCESS_KEY,
                       aws_secret_access_key=SECRET_KEY)
     try:
         s3.upload_file(local_file, bucket, s3_file)
+        data_to_fastapi(stock_name_list)
         alert_list()
         print(f"Upload Successful: {local_file} to {s3_file}")
         return True
@@ -353,12 +364,14 @@ def upload_to_s3_leading_stocks(local_file, bucket, s3_file):
         return False 
     
 def upload_to_s3(local_file, bucket, s3_file):
-    s3 = boto3.client('s3', aws_access_key_id=ACCESS_KEY, aws_secret_access_key=SECRET_KEY)
+    s3 = boto3.client('s3',
+                       aws_access_key_id=ACCESS_KEY, 
+                       aws_secret_access_key=SECRET_KEY)
     try:
         s3.upload_file(local_file, bucket, s3_file)
         print(f"Upload Successful: {local_file} to {s3_file}")
-        data_to_fastapi(local_file)
         alert_chart()
+        alert_list()
         return True
     except FileNotFoundError:
         print(f"The file {local_file} was not found")
@@ -369,18 +382,30 @@ def upload_to_s3(local_file, bucket, s3_file):
 
 base_url = "https://jeus.site:8080"
 
-def data_to_fastapi(json_file_name):
+def data_to_fastapi(json_files):
     url = f"{base_url}/predict"
     headers = {"accept": "application/json"}
-    with open(json_file_name,'rb') as file:
-        file = file.read()
-    files = {
-        'file': (json_file_name,file,'application/json')
-    }
-    response = requests.post(url, headers=headers,files=files)
-    if response.status_code == 200:
-        return response.json()
-    print(json_file_name, response.json())
+    files = []
+
+    for json_file_name in json_files:
+        if not os.path.exists(json_file_name):
+            print(f"파일을 찾을 수 없습니다: {json_file_name}")
+            continue
+
+        try:
+            with open(json_file_name, 'rb') as file:
+                files.append(('files', (json_file_name, file, 'application/json')))
+        except Exception as e:
+            print(f"{json_file_name} 처리 중 오류 발생: {str(e)}")
+
+    try:
+        response = requests.post(url, headers=headers, files=files)
+        if response.status_code == 200:
+            print(f"모든 파일 업로드 성공: {response.json()}")
+        else:
+            print(f"업로드 실패: {response.status_code}")
+    except Exception as e:
+        print(f"요청 중 오류 발생: {str(e)}")
 
 def alert_list():
     url = f"{base_url}/alert_list"

@@ -26,6 +26,7 @@ def upload_to_s3(local_file, bucket, s3_file):
                       aws_secret_access_key=SECRET_KEY)
     try:
         s3.upload_file(local_file, bucket, s3_file)
+        alert_list()
         print(f"Upload Successful: {local_file} to {s3_file}")
         return True
     except FileNotFoundError:
@@ -48,15 +49,14 @@ def update_json_files(kiwoom, cybos):
         stock_list = []
     
     stock_list_data = cybos.get_stock_info(stock_list)
-    
 
-    with open("주도주리스트.json", "w", encoding='utf-8') as f:
+    with open("stocklist.json", "w", encoding='utf-8') as f:
         json.dump(stock_list_data, f, ensure_ascii=False, indent=4)
-    print("주도주리스트.json 파일 생성 완료")
+    print("stocklist.json 파일 생성 완료")
     
     
     # S3에 업로드
-    upload_to_s3("주도주리스트.json", 'dev-jeus-bucket', "주도주리스트.json")
+    upload_to_s3("stocklist.json", 'dev-jeus-bucket', "stocklist.json")
 
     cybos.update_json_files(stock_list)
 
